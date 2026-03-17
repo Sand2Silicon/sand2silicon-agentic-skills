@@ -1,0 +1,8 @@
+{
+  "name": "integrate-claudecode",
+  "version": "1.0.0",
+  "description": "Integrate Claude Code into a Docker/VSCode Devcontainer project.",
+  "author": { "name": "Steven Peterson" },
+  "category": "development",
+  "keywords": ["devcontainer", "docker", "vscode", "claudecode", "setup"]
+}

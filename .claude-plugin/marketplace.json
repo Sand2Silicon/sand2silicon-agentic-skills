@@ -1,0 +1,13 @@
+{
+  "name": "sand2silicon-agentic-skills",
+  "owner": { "name": "Steven Peterson" },
+  "plugins": [
+    {
+      "name": "integrate-claudecode",
+      "source": "./plugins/integrate-claudecode",
+      "description": "Integrate Claude Code into a Docker/VSCode Devcontainer project.",
+      "version": "1.0.0",
+      "category": "development"
+    }
+  ]
+}
