@@ -15,6 +15,62 @@
       "description": "Scaffold a new project with a fully configured VS Code devcontainer, including Claude Code integration.",
       "version": "1.0.0",
       "category": "development"
+    },
+    {
+      "name": "add-claudecode-to-project",
+      "source": "./plugins/add-claudecode-to-project",
+      "description": "Integrate Claude Code (CLI + VS Code extension) into this project's dev container using a standard Anthropic API key or OAuth subscription.",
+      "version": "1.0.0",
+      "category": "development"
+    },
+    {
+      "name": "add-beads-to-project",
+      "source": "./plugins/add-beads-to-project",
+      "description": "Integrate beads (bd CLI) into a project's dev container. A distributed, graph-based issue tracker for AI coding agents.",
+      "version": "1.0.0",
+      "category": "development"
+    },
+    {
+      "name": "add-openspec-to-project",
+      "source": "./plugins/add-openspec-to-project",
+      "description": "Add the @fission-ai/openspec CLI tool to a project's devcontainer.",
+      "version": "1.0.0",
+      "category": "development"
+    },
+    {
+      "name": "wf-distill-workflow",
+      "source": "./plugins/wf-distill-workflow",
+      "description": "Analyze a past interaction or prompt and extract a reusable template prompt, skill, or agent definition.",
+      "version": "1.0.0",
+      "category": "workflow"
+    },
+    {
+      "name": "wf-generate-roadmap",
+      "source": "./plugins/wf-generate-roadmap",
+      "description": "Research a project's actual state vs documented state and generate a phased roadmap of epics.",
+      "version": "1.0.0",
+      "category": "workflow"
+    },
+    {
+      "name": "wf-generate-spec-beads",
+      "source": "./plugins/wf-generate-spec-beads",
+      "description": "Generate Beads epics and issues from an OpenSpec change, producing a fully dependency-wired task graph ready for implementation.",
+      "version": "1.0.0",
+      "category": "workflow"
+    },
+    {
+      "name": "wf-implement-beads",
+      "source": "./plugins/wf-implement-beads",
+      "description": "Implement a body of work tracked in Beads, guided by OpenSpec artifacts.",
+      "version": "1.0.0",
+      "category": "workflow"
+    },
+    {
+      "name": "wf-spec-completion-auditor",
+      "source": "./plugins/wf-spec-completion-auditor",
+      "description": "Audit for drift between closed Beads issues and open OpenSpec tasks.",
+      "version": "1.0.0",
+      "category": "workflow"
     }
   ]
 }
