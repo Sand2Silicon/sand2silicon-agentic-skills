@@ -1,0 +1,8 @@
+{
+  "name": "wf-implement-beads",
+  "version": "1.0.0",
+  "description": "Implement a body of work tracked in Beads, guided by OpenSpec artifacts. Use when Beads issues have been created for an OpenSpec change and implementation should begin or resume. Accepts an OpenSpec change name, a Beads epic ID, or no argument to auto-detect active work.",
+  "author": { "name": "Steven Peterson" },
+  "category": "workflow",
+  "keywords": ["workflow", "beads", "openspec", "implementation", "task-tracking"]
+}
