@@ -54,6 +54,14 @@ git init
 - **GPU**: `nvidia/cuda:12.1.0-runtime-ubuntu22.04`
 - **No GPU**: `ubuntu:22.04`
 
+### BuildKit syntax header
+
+Always add this as the **first line** of the Dockerfile to enable BuildKit cache mounts:
+
+```dockerfile
+# syntax=docker/dockerfile:1
+```
+
 ### Core packages (always install)
 
 Every devcontainer should include these regardless of language, because many tools and language servers install through them:
@@ -68,6 +76,10 @@ RUN apt-get update \
 
 # Install uv (fast Python package manager, used by many tools)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install Claude Code CLI (pinned version for reproducible builds)
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g @anthropic-ai/claude-code@2.1.78
 ```
 
 ### Language-specific additions
@@ -75,6 +87,10 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 **Python** — no extra apt packages needed (python3 already in core). Add after core:
 ```dockerfile
 # Nothing extra — Python is in the base install
+
+# Install Python dependencies with BuildKit pip cache
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 ```
 
 **C++** — add build tools:
@@ -145,7 +161,9 @@ Use this template, adjusting for GPU and language:
   "mounts": [
     "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude-<project-name>/data,target=/home/vscode/.claude,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude-<project-name>/claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.claude-<project-name>/claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude/skills,target=/home/vscode/.claude/skills,type=bind,readonly,consistency=cached",
+    "source=${localEnv:HOME}/.claude/plugins,target=/home/vscode/.claude/plugins,type=bind,consistency=cached"
   ],
   "remoteEnv": {
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
@@ -158,15 +176,17 @@ Use this template, adjusting for GPU and language:
         "anthropic.claude-code"
       ],
       "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "claudeCode.allowDangerouslySkipPermissions": true
       }
     }
   },
-  "onCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash",
-  "postCreateCommand": "<language-specific install command>",
-  "postStartCommand": "code --install-extension anthropic.claude-code 2>/dev/null || true"
+  "onCreateCommand": "echo 'Container ready'",
+  "postCreateCommand": "<language-specific install command>"
 }
 ```
+
+> **Note on plugins mount**: The plugins mount must NOT be readonly — the marketplace system writes cached manifests into `plugins/marketplaces/`. Skills can remain readonly. If plugins are installed inside the container using `claude plugin install`, use `--scope user` so they resolve to `/home/vscode/.claude/plugins` (the bind-mounted path).
 
 ### GPU projects
 
@@ -193,6 +213,22 @@ Add `"runArgs": ["--gpus", "all"]` to devcontainer.json.
 **Go**:
 - Extensions: add `"golang.go"`
 - postCreateCommand: `"echo 'Go project ready'"`
+
+### Beads integration (if project uses beads issue tracker)
+
+If beads (`bd`) is part of the project setup, **append the following to `postCreateCommand`**:
+
+```
+chmod +x .beads/hooks/* 2>/dev/null || true && bd hooks install 2>/dev/null || true
+```
+
+Example for a Python project with beads:
+
+```json
+"postCreateCommand": "python3 -m pip install -r /workspace/requirements.txt && chmod +x .beads/hooks/* 2>/dev/null || true && bd hooks install 2>/dev/null || true"
+```
+
+> **Why**: After a container rebuild, beads hook files lose their executable bit (they are written as `-rw-r--r--`). Without `chmod +x`, git silently skips them — meaning `prepare-commit-msg`, `post-checkout`, `pre-commit`, and other hooks never fire. `bd hooks install` sets `core.hooksPath` to `.beads/hooks/`, but that setting alone is not enough if the files are not executable. The `2>/dev/null || true` guards ensure the command is a no-op when `.beads/` does not exist yet.
 
 ---
 
@@ -327,7 +363,25 @@ bin/
 
 ---
 
-## Step 7 — Generate README.md
+## Step 7 — Generate .dockerignore
+
+Create a `.dockerignore` file at the project root to keep the Docker build context lean:
+
+```
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+.env
+```
+
+This prevents large directories and secrets from being sent to the Docker daemon during builds.
+
+---
+
+## Step 8 — Generate README.md
 
 Keep it minimal:
 
@@ -348,7 +402,7 @@ This project uses a VS Code devcontainer. Open in VS Code and select "Reopen in 
 
 ---
 
-## Step 8 — Generate scripts/setup-claude-code.sh
+## Step 9 — Generate scripts/setup-claude-code.sh
 
 Same as the initialize script but standalone with verbose output:
 
@@ -363,7 +417,7 @@ PROJECT_NAME="${1:-<project-name>}"
 
 ---
 
-## Step 9 — Final setup
+## Step 10 — Final setup
 
 ```bash
 cd <project-name>
