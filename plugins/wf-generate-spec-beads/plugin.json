@@ -1,0 +1,8 @@
+{
+  "name": "wf-generate-spec-beads",
+  "version": "1.0.0",
+  "description": "Generate Beads epics and issues from an OpenSpec change, producing a fully dependency-wired task graph ready for implementation. Use when an OpenSpec change has been planned and you need to create Beads issues to track implementation.",
+  "author": { "name": "Steven Peterson" },
+  "category": "workflow",
+  "keywords": ["workflow", "beads", "openspec", "task-graph", "planning", "epics"]
+}

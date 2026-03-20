@@ -1,0 +1,8 @@
+{
+  "name": "add-claudecode-to-project",
+  "version": "1.0.0",
+  "description": "Integrate Claude Code (CLI + VS Code extension) into this project's dev container using a standard Anthropic API key or OAuth subscription. Configures native installer, extension, per-project bind mounts, and bootstrap scripts.",
+  "author": { "name": "Steven Peterson" },
+  "category": "development",
+  "keywords": ["devcontainer", "docker", "vscode", "claudecode", "authentication", "setup"]
+}
