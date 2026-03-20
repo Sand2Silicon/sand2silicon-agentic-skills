@@ -8,6 +8,13 @@
       "description": "Integrate Claude Code into a Docker/VSCode Devcontainer project.",
       "version": "1.0.0",
       "category": "development"
+    },
+    {
+      "name": "create-devcontainer-project",
+      "source": "./plugins/create-devcontainer-project",
+      "description": "Scaffold a new project with a fully configured VS Code devcontainer, including Claude Code integration.",
+      "version": "1.0.0",
+      "category": "development"
     }
   ]
 }

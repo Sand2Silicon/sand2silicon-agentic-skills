@@ -1,0 +1,8 @@
+{
+  "name": "create-devcontainer-project",
+  "version": "1.0.0",
+  "description": "Scaffold a new project with a fully configured VS Code devcontainer, including Claude Code integration. Creates the project directory, Dockerfile, devcontainer.json, initialization scripts, language-specific tooling, and .gitignore.",
+  "author": { "name": "Steven Peterson" },
+  "category": "development",
+  "keywords": ["devcontainer", "docker", "vscode", "claudecode", "project-scaffold", "setup"]
+}
