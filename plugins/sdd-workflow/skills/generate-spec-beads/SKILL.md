@@ -1,14 +1,14 @@
 ---
-name: wf-generate-spec-beads
+name: generate-spec-beads
 description: Generate Beads epics and issues from an OpenSpec change, producing a fully dependency-wired task graph ready for implementation. Use when an OpenSpec change has been planned and you need to create Beads issues to track implementation.
 user_invocable: true
 ---
 
 # File Beads from OpenSpec
 
-Convert an OpenSpec change's `tasks.md` into a wired Beads dependency graph ready for `/wf-implement-beads`.
+Convert an OpenSpec change's `tasks.md` into a wired Beads dependency graph ready for `/implement-beads`.
 
-**Input**: `/wf-generate-spec-beads <change-name>` (e.g. `real-sentiment-data-feed`)
+**Input**: `/generate-spec-beads <change-name>` (e.g. `real-sentiment-data-feed`)
 
 ---
 

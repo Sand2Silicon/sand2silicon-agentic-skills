@@ -1,8 +1,0 @@
-{
-  "name": "add-openspec-to-project",
-  "version": "1.0.0",
-  "description": "Add the @fission-ai/openspec CLI tool to a project's devcontainer. Installs Node.js (if missing) and the openspec npm package into the Dockerfile so the tool persists across container rebuilds.",
-  "author": { "name": "Steven Peterson" },
-  "category": "development",
-  "keywords": ["devcontainer", "docker", "openspec", "nodejs", "npm", "spec"]
-}

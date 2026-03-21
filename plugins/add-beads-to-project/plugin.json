@@ -1,8 +1,0 @@
-{
-  "name": "add-beads-to-project",
-  "version": "1.0.0",
-  "description": "Integrate beads (bd CLI) into a project's dev container. Beads is a distributed, graph-based issue tracker for AI coding agents — it replaces markdown task plans with a dependency-aware task graph backed by an embedded version-controlled database.",
-  "author": { "name": "Steven Peterson" },
-  "category": "development",
-  "keywords": ["devcontainer", "docker", "beads", "dolt", "task-tracking", "ai-agents"]
-}

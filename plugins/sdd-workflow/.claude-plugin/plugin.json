@@ -1,0 +1,8 @@
+{
+  "name": "sdd-workflow",
+  "version": "1.0.0",
+  "description": "A suite of workflow skills for OpenSpec/Beads-driven development: distill workflows, generate roadmaps, create Beads task graphs, drive implementation, and audit spec completion.",
+  "author": { "name": "Steven Peterson" },
+  "category": "workflow",
+  "keywords": ["workflow", "openspec", "beads", "roadmap", "implementation", "audit"]
+}

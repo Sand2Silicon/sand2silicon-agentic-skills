@@ -1,5 +1,5 @@
 ---
-name: wf-generate-roadmap
+name: generate-roadmap
 description: Research a project's actual state vs documented state and generate a phased roadmap of epics. Reads all docs, code, and completed-work logs to find gaps, broken assumptions, and missing capabilities — then synthesizes them into high-level milestones for OpenSpec planning.
 user_invocable: true
 ---
