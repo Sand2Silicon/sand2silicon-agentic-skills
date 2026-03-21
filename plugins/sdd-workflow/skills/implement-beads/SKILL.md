@@ -1,5 +1,5 @@
 ---
-name: wf-implement-beads
+name: implement-beads
 description: Implement a body of work tracked in Beads, guided by OpenSpec artifacts. Use when Beads issues have been created for an OpenSpec change and implementation should begin or resume. Accepts an OpenSpec change name (e.g. fix-core-inference-pipeline), a Beads epic ID (e.g. workspace-3ti), or no argument to auto-detect active work.
 ---
 
@@ -8,8 +8,8 @@ description: Implement a body of work tracked in Beads, guided by OpenSpec artif
 Drive implementation of a body of work using Beads for task tracking and OpenSpec for spec context.
 
 **Input**: One of:
-- An OpenSpec change name: `/wf-implement-beads fix-core-inference-pipeline`
-- A Beads epic ID: `/wf-implement-beads workspace-3ti`
+- An OpenSpec change name: `/implement-beads fix-core-inference-pipeline`
+- A Beads epic ID: `/implement-beads workspace-3ti`
 - No argument: auto-detect from active/ready work
 
 ---
@@ -247,7 +247,7 @@ bd list --status=in_progress
 python3 scripts/sync-openspec-tasks.py
 
 # 3. Run the spec completion auditor
-# /wf-spec-completion-auditor <change-name>
+# /spec-completion-auditor <change-name>
 # If auditor reports gaps → STOP. Do not commit until gaps are resolved.
 
 # 4. Final test run

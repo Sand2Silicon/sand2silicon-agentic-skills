@@ -1,5 +1,5 @@
 ---
-name: wf-distill-workflow
+name: distill-workflow
 description: Analyze a past interaction or prompt and extract a reusable template prompt, skill, or agent definition. Use when you had a productive conversation and want to capture the workflow pattern for reuse. Also use when you have an existing prompt that could be improved based on what you learned works.
 license: MIT
 metadata:
@@ -10,7 +10,7 @@ user_invocable: true
 
 Analyze a conversation or prompt and extract a reusable artifact from it.
 
-**Input**: The argument after `/wf-distill-workflow` can be:
+**Input**: The argument after `/distill-workflow` can be:
 - Nothing (analyze the current conversation)
 - A file path to a prompt or template to refine (e.g., `@docs/templates/my-prompt.md`)
 - A description of what to extract (e.g., "the spec planning process we just did")
@@ -63,14 +63,15 @@ Analyze a conversation or prompt and extract a reusable artifact from it.
    - Include a "Notes" section explaining when/how to use it and how to evolve it
 
    **If skill:**
-   - Write to `.claude/skills/<name>/SKILL.md`
+   - Write to project-local `.claude/skills/<name>/SKILL.md`
    - Include frontmatter (name, description, user_invocable: true)
+   - look for a /create-skill skill to assist or research the format: https://agentskills.io/specification
    - Structure the skill as phases with clear handoff points
    - Use AskUserQuestion at decision points identified in step 2
    - Automate the parts that don't need human judgment
 
    **If agent:**
-   - Write the agent prompt (can be used with the Agent tool)
+   - Write the agent prompt and store project-local (can be used with the Agent tool)
    - Define clear inputs, outputs, and autonomy boundaries
    - Note what the agent should NOT decide on its own
 
@@ -87,7 +88,7 @@ Analyze a conversation or prompt and extract a reusable artifact from it.
 - **Prefer the lightest artifact that captures the value.** Don't build a skill when a template prompt suffices. Don't build an agent when human judgment is the valuable part.
 - **The back-and-forth IS the product** in many cases. If the value of an interaction was the discussion itself, a template that structures that discussion is better than a skill that tries to skip it.
 - **Include escape hatches.** Templates should have "modify as needed" notes. Skills should have "ask the user" steps. Agents should have clear boundaries.
-- **Name artifacts descriptively.** `spec-planning-prompt.md` not `template-1.md`. `wf-distill-workflow` not `meta-tool`.
+- **Name artifacts descriptively.** `spec-planning-prompt.md` not `template-1.md`. `distill-workflow` not `meta-tool`.
 - **Capture the WHY, not just the WHAT.** Include comments explaining why each section exists, so the user can make informed decisions about what to keep or change.
 
 ARGUMENTS: $ARGUMENTS
