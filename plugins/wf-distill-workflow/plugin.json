@@ -1,8 +1,0 @@
-{
-  "name": "wf-distill-workflow",
-  "version": "1.0.0",
-  "description": "Analyze a past interaction or prompt and extract a reusable template prompt, skill, or agent definition. Use when you had a productive conversation and want to capture the workflow pattern for reuse, or when an existing prompt could be improved.",
-  "author": { "name": "Steven Peterson" },
-  "category": "workflow",
-  "keywords": ["workflow", "distill", "templates", "skills", "agents", "reuse"]
-}

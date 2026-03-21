@@ -38,37 +38,9 @@
       "category": "development"
     },
     {
-      "name": "wf-distill-workflow",
-      "source": "./plugins/wf-distill-workflow",
-      "description": "Analyze a past interaction or prompt and extract a reusable template prompt, skill, or agent definition.",
-      "version": "1.0.0",
-      "category": "workflow"
-    },
-    {
-      "name": "wf-generate-roadmap",
-      "source": "./plugins/wf-generate-roadmap",
-      "description": "Research a project's actual state vs documented state and generate a phased roadmap of epics.",
-      "version": "1.0.0",
-      "category": "workflow"
-    },
-    {
-      "name": "wf-generate-spec-beads",
-      "source": "./plugins/wf-generate-spec-beads",
-      "description": "Generate Beads epics and issues from an OpenSpec change, producing a fully dependency-wired task graph ready for implementation.",
-      "version": "1.0.0",
-      "category": "workflow"
-    },
-    {
-      "name": "wf-implement-beads",
-      "source": "./plugins/wf-implement-beads",
-      "description": "Implement a body of work tracked in Beads, guided by OpenSpec artifacts.",
-      "version": "1.0.0",
-      "category": "workflow"
-    },
-    {
-      "name": "wf-spec-completion-auditor",
-      "source": "./plugins/wf-spec-completion-auditor",
-      "description": "Audit for drift between closed Beads issues and open OpenSpec tasks.",
+      "name": "sdd-workflow",
+      "source": "./plugins/sdd-workflow",
+      "description": "A suite of workflow skills for OpenSpec/Beads-driven development: distill workflows, generate roadmaps, create Beads task graphs, drive implementation, and audit spec completion.",
       "version": "1.0.0",
       "category": "workflow"
     }

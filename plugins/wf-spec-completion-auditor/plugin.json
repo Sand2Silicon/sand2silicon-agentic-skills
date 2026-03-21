@@ -1,8 +1,0 @@
-{
-  "name": "wf-spec-completion-auditor",
-  "version": "1.0.0",
-  "description": "Audit for drift between closed Beads issues and open OpenSpec tasks. Use when Beads have been closed but OpenSpec tasks may still show as incomplete, or when you want to verify that work described in spec tasks was actually implemented before archiving.",
-  "author": { "name": "Steven Peterson" },
-  "category": "workflow",
-  "keywords": ["workflow", "beads", "openspec", "audit", "verification", "completion"]
-}

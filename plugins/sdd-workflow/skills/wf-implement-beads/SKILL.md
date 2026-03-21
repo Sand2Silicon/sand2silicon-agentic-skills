@@ -247,7 +247,7 @@ bd list --status=in_progress
 python3 scripts/sync-openspec-tasks.py
 
 # 3. Run the spec completion auditor
-# /spec-completion-auditor <change-name>
+# /wf-spec-completion-auditor <change-name>
 # If auditor reports gaps → STOP. Do not commit until gaps are resolved.
 
 # 4. Final test run
