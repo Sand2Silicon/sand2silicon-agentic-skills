@@ -10,30 +10,9 @@
       "category": "development"
     },
     {
-      "name": "create-devcontainer-project",
-      "source": "./plugins/create-devcontainer-project",
-      "description": "Scaffold a new project with a fully configured VS Code devcontainer, including Claude Code integration.",
-      "version": "1.0.0",
-      "category": "development"
-    },
-    {
-      "name": "add-claudecode-to-project",
-      "source": "./plugins/add-claudecode-to-project",
-      "description": "Integrate Claude Code (CLI + VS Code extension) into this project's dev container using a standard Anthropic API key or OAuth subscription.",
-      "version": "1.0.0",
-      "category": "development"
-    },
-    {
-      "name": "add-beads-to-project",
-      "source": "./plugins/add-beads-to-project",
-      "description": "Integrate beads (bd CLI) into a project's dev container. A distributed, graph-based issue tracker for AI coding agents.",
-      "version": "1.0.0",
-      "category": "development"
-    },
-    {
-      "name": "add-openspec-to-project",
-      "source": "./plugins/add-openspec-to-project",
-      "description": "Add the @fission-ai/openspec CLI tool to a project's devcontainer.",
+      "name": "sdd-setup",
+      "source": "./plugins/sdd-setup",
+      "description": "Skills for scaffolding and configuring VS Code devcontainer projects: create new projects, add Claude Code, add Beads issue tracking, and add the OpenSpec CLI.",
       "version": "1.0.0",
       "category": "development"
     },
