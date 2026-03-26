@@ -51,17 +51,24 @@ Before touching `bd`, write out the full plan. This catches structural mistakes 
 
 ```
 EPICS (N total):
-  E1: <title> — tasks.md §1, §2 (N issues)
-  E2: <title> — tasks.md §3 (N issues)
+  E1: <title> — tasks.md §1, §2 (N impl issues + N test issues)
+  E2: <title> — tasks.md §3 (N impl issues + N test issues)
   ...
   E_review: Review & Build Gate (4 issues)
 
-DEPENDENCY CHAINS:
-  Sequential within E1: T11 → T12 → T14; T21 → T25
-  Cross-epic: E_cache blocks E_manager; E_agg blocks E_manager
-  Unblocked at start: T11, T12, T83, T84 (pure functions / no deps)
+PER-FEATURE PATTERN (repeat for each task):
+  T11_impl (Agent: implementation-agent) ─┐
+  T11_test (Agent: test-writer-agent)  ───┤→ T11_review (Agent: review-agent)
+  - Test and impl beads are INDEPENDENT — no dep edge between them
+  - Review bead depends on BOTH impl and test completing
 
-TOTAL: N epics, M task issues (~X beads)
+DEPENDENCY CHAINS:
+  Sequential within E1: T11_review → T12_impl; T21_review → T25_impl
+  Parallel within each task: T_impl ‖ T_test (both unblocked together)
+  Cross-epic: E_cache blocks E_manager; E_agg blocks E_manager
+  Unblocked at start: T11_impl, T11_test, T83_impl, T83_test (no deps)
+
+TOTAL: N epics, M task issues (~X beads, including impl + test + review per feature)
 ```
 
 If total exceeds 80 beads, confirm with the user before creating. If fewer than 10 total tasks across the whole change, consider whether epics are necessary or if flat issues suffice.
@@ -127,13 +134,40 @@ Agent: implementation-agent" \
   --parent "$EPIC_FOUNDATION" 2>&1 | extract_id)
 echo "T11=$T11"
 
-# Immediately sequential task — set dep and parent at create time
+# Parallel test bead for T11 — independent of impl, based on spec acceptance criteria
+T11_TEST=$(bd create \
+  --title=": X.Y Test <task title>" \
+  --description="Write tests for <task> based on spec acceptance criteria.
+Accept: Tests cover all acceptance scenarios from spec and JIRA criteria.
+OpenSpec: change:<change-name>/tasks.md: X.Y
+Spec: specs/<name>/spec.md §<section>
+Agent: test-writer-agent
+Note: Write tests from the SPEC, not from the implementation. Tests must be
+written independently — do not read or depend on implementation code." \
+  --type=task --priority=1 \
+  --parent "$EPIC_FOUNDATION" 2>&1 | extract_id)
+echo "T11_TEST=$T11_TEST"
+
+# Per-feature review gate — depends on BOTH impl and test completing
+T11_REVIEW=$(bd create \
+  --title=": X.Y Review <task title>" \
+  --description="Review implementation against spec and test coverage.
+Accept: Impl satisfies all acceptance criteria; tests pass against impl.
+OpenSpec: change:<change-name>/tasks.md: X.Y
+Agent: review-agent
+Note: File new beads for any gaps found and send back to implementation-agent." \
+  --type=task --priority=1 \
+  --parent "$EPIC_FOUNDATION" \
+  --deps "$T11,$T11_TEST" 2>&1 | extract_id)
+echo "T11_REVIEW=$T11_REVIEW"
+
+# Next task in the chain — depends on prior task's REVIEW bead, not just impl
 T12=$(bd create \
   --title=": X.Y <task title>" \
   --description="..." \
   --type=task --priority=1 \
   --parent "$EPIC_FOUNDATION" \
-  --deps "$T11" 2>&1 | extract_id)
+  --deps "$T11_REVIEW" 2>&1 | extract_id)
 echo "T12=$T12"
 
 # Task with multiple immediate predecessors
@@ -142,12 +176,14 @@ T25=$(bd create \
   --description="..." \
   --type=task --priority=1 \
   --parent "$EPIC_FOUNDATION" \
-  --deps "$T21,$T22" 2>&1 | extract_id)
+  --deps "$T21_REVIEW,$T22_REVIEW" 2>&1 | extract_id)
 echo "T25=$T25"
 
 # Append IDs to the file after each epic's batch
 cat >> /tmp/beads_ids.env << EOF
 T11=$T11
+T11_TEST=$T11_TEST
+T11_REVIEW=$T11_REVIEW
 T12=$T12
 T25=$T25
 EOF
@@ -222,13 +258,22 @@ Every issue description MUST include:
 | `OpenSpec:` | `change:<change-name>/tasks.md: X.Y` |
 | `Spec:` | `specs/<name>/spec.md §<section>` |
 | `Design:` | `§<decision name>` (if the task implements a specific design decision) |
-| `Agent:` | `implementation-agent` / `test-agent` / `review-agent` |
+| `Agent:` | `implementation-agent` / `test-writer-agent` / `review-agent` |
+
+**Agent roles:**
+- **`implementation-agent`** — writes production code for the feature
+- **`test-writer-agent`** — writes tests independently from the spec/acceptance criteria, NOT from the implementation. Tests should be derived from the spec scenarios and ultimately the JIRA ticket acceptance criteria. Runs in parallel with (but independently of) the implementation agent.
+- **`review-agent`** — reviews completed work against spec, files new beads for gaps, sends action items back to the implementation agent
+
+**Per-feature triad:** Every non-trivial task should produce three beads: impl + test + review. The impl and test beads are independent (no dep edge between them). The review bead depends on both. Downstream tasks depend on the review bead, not the impl bead directly.
 
 Prefix every title with `: ` for traceability.
 
 ---
 
 ## Review & Build Gate epic (always include)
+
+**IMPORTANT:** The build gate runs AFTER all implementation and per-feature reviews are complete. Do not run build/test validation gates while work is still in progress — partial implementations will cause spurious failures. Per-feature review gates (above) catch issues incrementally; the build gate is a final integration check.
 
 The final epic gates on all other epics completing. It contains 3-4 issues:
 
