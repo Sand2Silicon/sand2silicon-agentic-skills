@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs cat:*)",
+      "Bash(find /home/speterson/source/sand2silicon-agentic-skills/plugins -type f \\\\\\(-name README* -o -name SPEC* -o -name *.txt \\\\\\))"
+    ]
+  }
+}

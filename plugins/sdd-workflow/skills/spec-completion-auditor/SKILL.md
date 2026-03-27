@@ -38,7 +38,7 @@ Parse the `change:<name>/tasks.md: X.Y` field from each issue description (or le
 ```bash
 cat openspec/changes/<name>/tasks.md
 ```
-Parse `- [x]` (complete) and `- [ ]` (open) entries with their section numbers.
+Parse `- [x]` (complete), `- [ ]` (open), and `- [~]` (in-progress) entries with their section numbers. Treat `[~]` the same as `[ ]` for mismatch detection — both are "not yet complete."
 
 ### 3. Identify mismatches
 
