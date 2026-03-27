@@ -1,7 +1,7 @@
 ---
 name: generate-spec-beads
 description: Generate Beads epics and issues from an OpenSpec change (or equivalent task source), producing a fully dependency-wired task graph ready for /implement-beads. Use when planning is complete and you need to create Beads issues to track implementation.
-user_invocable: true
+user-invocable: true
 ---
 
 # File Beads from Spec
@@ -10,24 +10,27 @@ Convert a planned body of work into a wired Beads dependency graph ready for `/i
 
 **Input**: `/generate-spec-beads <change-name>` (e.g. `add-auth-middleware`)
 
-**Primary path:** OpenSpec `tasks.md` is the task source. When JIRA is active, ticket acceptance criteria supplement the spec. When only a roadmap exists, roadmap epic descriptions are the task source.
+**Primary path:** OpenSpec `tasks.md` is the task source. JIRA ticket acceptance criteria are the ultimate authority when active — if a spec and JIRA conflict, JIRA wins. A roadmap, when present, groups work into phases but is not itself a requirements source; specs/tasks carry the full detail.
 
 ---
 
 ## Pre-flight
 
-### Start Dolt server
+### Ensure Dolt server is running
 
-**Critical.** Every `bd` command auto-starts/stops the Dolt server. Running many in sequence causes lock contention. Start once and keep running for the whole session.
+Start the Dolt server once and keep it running for the whole session. Without a persistent server, each `bd` command auto-starts and auto-stops Dolt, which causes lock contention when running many commands in sequence.
 
 ```bash
-# Clear stale locks from previous sessions
-rm -f .beads/dolt-server.lock
-rm -f .beads/dolt/.dolt/noms/LOCK
-rm -f .beads/dolt/.dolt/stats/.dolt/noms/LOCK
-
-# Start server and verify
-bd dolt start && sleep 2 && bd stats
+# Check if already running
+if bd stats 2>/dev/null; then
+  echo "Dolt server already running"
+else
+  # Clear stale locks from previous sessions, then start
+  rm -f .beads/dolt-server.lock
+  rm -f .beads/dolt/.dolt/noms/LOCK
+  rm -f .beads/dolt/.dolt/stats/.dolt/noms/LOCK
+  bd dolt start && sleep 2 && bd stats
+fi
 ```
 
 If `bd stats` fails, check `.beads/dolt-server.log`. Fix before proceeding.
@@ -40,7 +43,7 @@ ls roadmap.md docs/roadmap.md 2>/dev/null      # Roadmap available?
 # JIRA: check if MCP server is configured
 ```
 
-**If JIRA is active:** Fetch the ticket(s) for this work via JIRA MCP. Cache acceptance criteria — these are ground truth and must be reflected in bead `Accept:` fields.
+**If JIRA is active:** JIRA requirements should already be reflected in the OpenSpec artifacts from the spec planning phase. Verify this by spot-checking key tickets via JIRA MCP. If any JIRA acceptance criteria are missing from the specs, they must be reflected in bead `Accept:` fields — JIRA is the ultimate authority.
 
 **Ticket prefix:** When JIRA is active, all bead titles start with the ticket number (e.g. `PROJ-123: 1.1 Add cache layer`). When using a roadmap epic (no JIRA), prefix with the epic identifier. Otherwise, titles start with the task number directly.
 
@@ -59,7 +62,7 @@ Use a parallel Explore agent to read everything at once:
 - Note discrepancies — issue descriptions must reflect actual APIs, not aspirational pseudo-code
 - Check dependency files (`requirements.txt`, `package.json`, etc.) for any new deps the spec adds
 
-**If JIRA active:** Cross-reference spec acceptance criteria with JIRA ticket criteria. Where they differ, note the JIRA version as authoritative.
+**If JIRA active:** Cross-reference spec acceptance criteria with JIRA ticket criteria via MCP. JIRA is the ultimate authority — if the spec missed or softened a JIRA requirement, the bead must reflect the JIRA version.
 
 **If bead descriptions need reference codebases:** Note any external repos referenced in the spec for inclusion as `Reference:` lines in bead descriptions.
 

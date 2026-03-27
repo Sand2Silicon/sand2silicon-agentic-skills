@@ -53,12 +53,15 @@ Store these for all subagent prompts:
 
 ### 0b. Ensure Dolt server is running
 
+Parallel subagents share the Dolt server. Without it running persistently, each `bd` command auto-starts/stops Dolt, causing lock contention.
+
 ```bash
-# Clear stale locks and start the server once for the session.
-# Parallel subagents share the Dolt server — without it running,
-# each bd command tries to auto-start/stop, causing lock contention.
-rm -f .beads/dolt-server.lock .beads/dolt/.dolt/noms/LOCK .beads/dolt/.dolt/stats/.dolt/noms/LOCK
-bd dolt start && sleep 2 && bd stats
+if bd stats 2>/dev/null; then
+  echo "Dolt server already running"
+else
+  rm -f .beads/dolt-server.lock .beads/dolt/.dolt/noms/LOCK .beads/dolt/.dolt/stats/.dolt/noms/LOCK
+  bd dolt start && sleep 2 && bd stats
+fi
 ```
 
 If `bd stats` fails, check `.beads/dolt-server.log`. Fix before proceeding.
@@ -74,9 +77,9 @@ ls roadmap.md docs/roadmap.md 2>/dev/null            # Roadmap?
 ```
 
 **Context hierarchy:**
-- **JIRA** (when active): Requirements and acceptance criteria are ground truth. Query via JIRA MCP server. Minimize calls — fetch once, reference cached data, but always refer back when criteria are unclear.
-- **OpenSpec** (when active): Provides design decisions, spec scenarios, and task structure.
-- **Roadmap** (when active, no JIRA): Lightweight phasing — identifies which epic group is being worked. Not referenced if JIRA is in play (JIRA subsumes the roadmap's role).
+- **JIRA** (when active): Ultimate authority for requirements and acceptance criteria. Query via JIRA MCP server — fetch once, cache, refer back when criteria are unclear. If JIRA and a spec conflict, JIRA wins.
+- **OpenSpec** (when active): Provides design decisions, spec scenarios, task structure, and expanded acceptance criteria. This is where the bulk of implementation detail lives.
+- **Roadmap** (when present): Groups work into phases/epics for batching. When JIRA is active, the roadmap is just an organizational bridge — track to JIRA ticket numbers, not roadmap phases. When no JIRA, roadmap epic descriptions provide milestone context, but OpenSpec specs/tasks still carry the full requirements.
 - **None of the above**: Beads descriptions alone provide the work context.
 
 Also scan ready beads for `Reference:` lines pointing to external codebases — note org/repo pairs for subagent prompts.
@@ -145,7 +148,7 @@ Read before writing any code (paths relative to `openspec/changes/<change-name>/
 
 ### JIRA (when active)
 
-Query the JIRA MCP server for the ticket(s) associated with this work. Cache the acceptance criteria — these are ground truth for "done." When a bead's acceptance criteria and JIRA conflict, JIRA wins.
+JIRA requirements should already be reflected in the OpenSpec artifacts and bead descriptions from earlier planning phases. Verify by spot-checking key tickets via JIRA MCP. Cache the acceptance criteria — these are ground truth for "done." When a bead's acceptance criteria and JIRA conflict, JIRA wins. Always refer back to JIRA when acceptance criteria are ambiguous during implementation.
 
 ### Roadmap (when active, no JIRA)
 
