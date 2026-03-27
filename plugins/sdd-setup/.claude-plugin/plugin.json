@@ -1,7 +1,7 @@
 {
   "name": "sdd-setup",
   "version": "2.0.0",
-  "description": "Skills and a builder agent for scaffolding AI-driven development containers: create projects, add Claude Code, Beads, and OpenSpec. Includes shared lifecycle scripts, Dockerfile/devcontainer templates, and a troubleshooting agent.",
+  "description": "Skills and a builder agent for scaffolding AI-driven development containers: create projects, add Claude Code, Beads, and OpenSpec. Skills generate project-specific Dockerfiles, devcontainer.json, and lifecycle scripts. Includes reference templates and a troubleshooting agent.",
   "author": { "name": "Steven Peterson" },
   "category": "development",
   "keywords": ["devcontainer", "docker", "vscode", "claudecode", "beads", "openspec", "scaffold", "setup", "builder"]

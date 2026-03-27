@@ -1,85 +1,49 @@
 // Template: devcontainer.json for AI-Driven Development
 // Replace {{PLACEHOLDERS}} with project-specific values.
 // Remove sections marked OPTIONAL if not needed.
+// Skills generate this file with only the sections the user requested.
 {
   "name": "{{PROJECT_NAME}}",
   "build": {
-    "dockerfile": "Dockerfile",
     "context": "..",
+    "dockerfile": "Dockerfile",
     "target": "devcontainer"
   },
-
-  // --- Container user (must match Dockerfile ARG USERNAME) ---
   "containerUser": "{{USERNAME}}",
 
-  // --- Workspace mount ---
-  // Bind-mount the project directory into the container.
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/{{PROJECT_NAME}},type=bind,consistency=cached",
   "workspaceFolder": "/workspaces/{{PROJECT_NAME}}",
 
-  // --- Additional mounts ---
-  "mounts": [
-    // Claude Code config (per-project isolation via host directory).
-    // initialize.sh creates these paths on the host before container build.
-    "source=${localEnv:HOME}/.claude-{{PROJECT_NAME}}/data,target=/home/{{USERNAME}}/.claude,type=bind",
-    "source=${localEnv:HOME}/.claude-{{PROJECT_NAME}}/claude.json,target=/home/{{USERNAME}}/.claude.json,type=bind"
+  "initializeCommand": "bash ${localWorkspaceFolder}/.devcontainer/initialize_devcontainer.sh",
+  "postCreateCommand": "/bin/bash /workspaces/{{PROJECT_NAME}}/.devcontainer/setup_devcontainer.sh",
 
-    // OPTIONAL: AWS credentials for Bedrock authentication (readonly)
-    // ,"source=${localEnv:HOME}/.aws,target=/home/{{USERNAME}}/.aws,type=bind,readonly"
-
-    // OPTIONAL: Shared data mount
-    // ,"source=/mnt,target=/mnt,type=bind,consistency=cached"
-  ],
-
-  // --- Environment ---
   "remoteEnv": {
-    // CONFIGURE: Authentication — choose ONE method:
-
-    // Method 1: AWS Bedrock (mount ~/.aws above and uncomment)
+    // === Bedrock auth (if chosen): ===
     // "CLAUDE_CODE_USE_BEDROCK": "1",
     // "AWS_REGION": "us-west-2",
 
-    // Method 2: Direct API key
+    // === Anthropic API key auth (if chosen): ===
     // "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
 
-    // Method 3: Google Vertex AI
-    // "CLAUDE_CODE_USE_VERTEX": "1",
-    // "CLOUD_ML_REGION": "us-east5",
-    // "ANTHROPIC_VERTEX_PROJECT_ID": "your-project-id",
-
-    // Forward GitHub PAT for git operations (optional)
     "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}"
   },
 
-  // --- Lifecycle commands ---
+  "mounts": [
+    // Claude Code per-project config
+    "source=${localEnv:HOME}/.claude-{{PROJECT_NAME}}/data,target=/home/{{USERNAME}}/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude-{{PROJECT_NAME}}/claude.json,target=/home/{{USERNAME}}/.claude.json,type=bind"
 
-  // Runs on HOST before container build — creates bind-mount source paths
-  "initializeCommand": "bash ${localWorkspaceFolder}/.devcontainer/initialize.sh {{PROJECT_NAME}}",
+    // === Bedrock auth (if chosen): ===
+    // ,"source=${localEnv:HOME}/.aws,target=/home/{{USERNAME}}/.aws,type=bind,readonly"
+  ],
 
-  // Runs inside container after creation — installs user-space tools
-  // CONFIGURE: Add flags for tools you want: --claude --beads --openspec --uv --all
-  "postCreateCommand": "/bin/bash /workspaces/{{PROJECT_NAME}}/.devcontainer/setup.sh --all",
-
-  // OPTIONAL: Forward ports
-  // "forwardPorts": [],
-
-  // OPTIONAL: GPU passthrough
-  // "runArgs": ["--gpus", "all"],
-
-  // --- VS Code customizations ---
   "customizations": {
     "vscode": {
       "extensions": [
         "anthropic.claude-code"
-        // CONFIGURE: Add language-specific extensions
-        // ,"ms-python.python"
-        // ,"ms-python.debugpy"
-        // ,"ms-python.vscode-pylance"
-        // ,"golang.go"
-        // ,"rust-lang.rust-analyzer"
       ],
       "settings": {
-        // CONFIGURE: Uncomment for Bedrock provider
+        // === Bedrock auth (if chosen): ===
         // "claude-code.apiProvider": "bedrock",
         // "claude-code.awsRegion": "us-west-2"
       }

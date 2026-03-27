@@ -12,7 +12,7 @@
     {
       "name": "sdd-setup",
       "source": "./plugins/sdd-setup",
-      "description": "Skills and a builder agent for scaffolding AI-driven development containers: create projects, add Claude Code, Beads, and OpenSpec. Includes shared lifecycle scripts, Dockerfile/devcontainer templates, and a troubleshooting agent.",
+      "description": "Skills and a builder agent for scaffolding AI-driven development containers: create projects, add Claude Code, Beads, and OpenSpec. Skills generate project-specific Dockerfiles, devcontainer.json, and lifecycle scripts.",
       "version": "2.0.0",
       "category": "development"
     },
