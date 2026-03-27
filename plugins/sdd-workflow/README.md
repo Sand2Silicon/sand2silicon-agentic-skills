@@ -17,33 +17,41 @@ The result: auditable, parallelized, spec-compliant implementation with full tra
 
 ```mermaid
 flowchart TD
-    subgraph "Context Sources"
-        JIRA["JIRA Tickets<br/><i>ultimate authority when active</i>"]
-        RM["Roadmap.md<br/><i>phases/batching</i>"]
+    classDef context fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
+    classDef setup fill:#9ceed2,stroke:#00c2a0,color:#1a1a2e
+    classDef planning fill:#3694fc,stroke:#0263fb,color:#fff
+    classDef artifact fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
+    classDef execution fill:#6100ff,stroke:#4a00cc,color:#fff
+    classDef support fill:#f3b1c4,stroke:#ff5b8a,color:#1a1a2e
+    classDef success fill:#00c2a0,stroke:#009a7c,color:#fff
+
+    subgraph CTX [" Context Sources "]
+        JIRA["JIRA Tickets<br/><i>ultimate authority when active</i>"]:::context
+        RM["Roadmap.md<br/><i>phases/batching</i>"]:::context
     end
 
-    subgraph "Setup (once per project)"
-        INIT["/sdd-workflow-init<br/>Detect project context"]
-        PTPL["Project Template<br/>.claude/sdd-workflow/spec-planning-template.md"]
+    subgraph SET [" Setup · once per project "]
+        INIT["/sdd-workflow-init<br/>Detect project context"]:::setup
+        PTPL["Project Template<br/>.claude/sdd-workflow/<br/>spec-planning-template.md"]:::setup
     end
 
-    subgraph "Planning Phase"
-        PS["/plan-spec<br/>Interactive planning conversation"]
-        SFT["/spec-from-tickets<br/>JIRA fast path"]
-        PROPOSE["/opsx:propose<br/>Generate OpenSpec artifacts"]
-        OS["OpenSpec Artifacts<br/>proposal + design + specs + tasks"]
+    subgraph PLN [" Planning Phase · every change "]
+        PS["/plan-spec<br/>Interactive planning conversation"]:::planning
+        SFT["/spec-from-tickets<br/>JIRA fast path"]:::planning
+        PROPOSE["/opsx:propose<br/>Generate OpenSpec artifacts"]:::planning
+        OS["OpenSpec Artifacts<br/>proposal + design + specs + tasks"]:::artifact
     end
 
-    subgraph "Execution Phase"
-        GSB["/generate-spec-beads<br/>Create dependency graph"]
-        IB["/implement-beads<br/>Orchestrate parallel agents"]
-        SCA["/spec-completion-auditor<br/>Verify completeness"]
+    subgraph EXE [" Execution Phase · every change "]
+        GSB["/generate-spec-beads<br/>Create dependency graph"]:::execution
+        IB["/implement-beads<br/>Orchestrate parallel agents"]:::execution
+        SCA["/spec-completion-auditor<br/>Verify completeness"]:::execution
     end
 
-    subgraph "Support"
-        GR["/generate-roadmap<br/>Gap analysis + epic synthesis"]
-        DW["/distill-workflow<br/>Extract reusable patterns"]
-        SYNC["sync-openspec-tasks.py<br/>Auto-sync bead state to tasks.md"]
+    subgraph SUP [" Support "]
+        GR["/generate-roadmap<br/>Gap analysis + epic synthesis"]:::support
+        DW["/distill-workflow<br/>Extract reusable patterns"]:::support
+        SYNC["sync-openspec-tasks.py<br/>Auto-sync bead state to tasks.md"]:::support
     end
 
     INIT --> PTPL
@@ -59,12 +67,14 @@ flowchart TD
     GSB -->|"wired bead graph"| IB
     IB -->|"all beads closed"| SCA
     SCA -->|"gaps?"| IB
-    SCA -->|"all verified"| ARCHIVE["Archive Change"]
+    SCA -->|"all verified"| ARCHIVE["Archive Change"]:::success
 
     GR -->|"feeds into"| PS
     IB -.->|"triggers on bd close"| SYNC
     SYNC -.->|"updates"| OS
 ```
+
+> **Color key:** <span style="color:#3694fc">Blue</span> = daily planning | <span style="color:#6100ff">Purple</span> = daily execution | <span style="color:#00c2a0">Green</span> = one-time setup / success | <span style="color:#ff5b8a">Pink</span> = support tools | <span style="color:#36ead0">Teal</span> = context sources
 
 ## Workflow Stages
 
@@ -85,14 +95,19 @@ Both paths produce **OpenSpec artifacts** (proposal, design, specs with acceptan
 
 ```mermaid
 flowchart LR
-    PS["/plan-spec"] -->|"asks"| Q1["What to build?<br/>(tickets, roadmap, description)"]
-    Q1 -->|"JIRA tickets"| FETCH["Fetch via JIRA MCP<br/>extract acceptance criteria"]
-    Q1 -->|"roadmap epic"| READ["Read roadmap<br/>extract phase context"]
-    Q1 -->|"free description"| MANUAL["User describes work"]
-    FETCH --> DIALOG["Back-and-forth<br/>conversation"]
+    classDef planning fill:#3694fc,stroke:#0263fb,color:#fff
+    classDef context fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
+    classDef dialog fill:#6100ff,stroke:#4a00cc,color:#fff
+    classDef success fill:#00c2a0,stroke:#009a7c,color:#fff
+
+    PS["/plan-spec"]:::planning -->|"asks"| Q1["What to build?<br/>(tickets, roadmap, description)"]:::planning
+    Q1 -->|"JIRA tickets"| FETCH["Fetch via JIRA MCP<br/>extract acceptance criteria"]:::context
+    Q1 -->|"roadmap epic"| READ["Read roadmap<br/>extract phase context"]:::context
+    Q1 -->|"free description"| MANUAL["User describes work"]:::context
+    FETCH --> DIALOG["Back-and-forth<br/>conversation"]:::dialog
     READ --> DIALOG
     MANUAL --> DIALOG
-    DIALOG --> PROPOSE["/opsx:propose<br/>with populated context"]
+    DIALOG --> PROPOSE["/opsx:propose<br/>with populated context"]:::success
 ```
 
 **The back-and-forth conversation IS the product.** The interactive planning dialog catches misunderstandings that would otherwise become expensive bugs during implementation. `/plan-spec` structures this conversation, not replaces it.
@@ -103,32 +118,38 @@ Converts the planned tasks into a **dependency-wired Beads graph** — the execu
 
 ```mermaid
 flowchart LR
+    classDef source fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
+    classDef impl fill:#3694fc,stroke:#0263fb,color:#fff
+    classDef test fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
+    classDef review fill:#ff5b8a,stroke:#d44470,color:#fff
+    classDef gate fill:#00c2a0,stroke:#009a7c,color:#fff
+
     subgraph "OpenSpec tasks.md"
-        T1["1.1 Add cache layer"]
-        T2["1.2 Scaffold API module"]
-        T3["2.1 Integrate cache + API"]
+        T1["1.1 Add cache layer"]:::source
+        T2["1.2 Scaffold API module"]:::source
+        T3["2.1 Integrate cache + API"]:::source
     end
 
     subgraph "Beads Graph (per feature)"
-        T1 --> I1["impl bead"]
-        T1 --> TS1["test bead"]
-        I1 --> R1["review bead"]
+        T1 --> I1["impl bead"]:::impl
+        T1 --> TS1["test bead"]:::test
+        I1 --> R1["review bead"]:::review
         TS1 --> R1
 
-        T2 --> I2["impl bead"]
-        T2 --> TS2["test bead"]
-        I2 --> R2["review bead"]
+        T2 --> I2["impl bead"]:::impl
+        T2 --> TS2["test bead"]:::test
+        I2 --> R2["review bead"]:::review
         TS2 --> R2
 
-        R1 --> I3["impl bead"]
+        R1 --> I3["impl bead"]:::impl
         R2 --> I3
         T3 --> I3
-        T3 --> TS3["test bead"]
-        I3 --> R3["review bead"]
+        T3 --> TS3["test bead"]:::test
+        I3 --> R3["review bead"]:::review
         TS3 --> R3
     end
 
-    R3 --> GATE["Build Gate"]
+    R3 --> GATE["Build Gate"]:::gate
 ```
 
 **Key structural pattern — the per-feature triad:**
@@ -144,15 +165,23 @@ The orchestrator agent reads the bead graph and executes it in parallel waves:
 
 ```mermaid
 sequenceDiagram
-    participant O as Orchestrator
-    participant IA as Impl Agents
-    participant TA as Test Agents
-    participant RA as Review Agents
+    box rgb(144, 182, 253) Orchestration
+        participant O as Orchestrator
+    end
+    box rgb(54, 148, 252) Implementation
+        participant IA as Impl Agents
+    end
+    box rgb(172, 247, 243) Testing
+        participant TA as Test Agents
+    end
+    box rgb(243, 177, 196) Review
+        participant RA as Review Agents
+    end
 
     O->>O: bd ready (find unblocked beads)
     O->>O: Group into Wave 1
 
-    par Wave 1 - all dispatched simultaneously
+    par Wave 1 — all dispatched simultaneously
         O->>IA: implement bead A
         O->>TA: test bead A (from spec, not impl)
         O->>IA: implement bead B
@@ -276,14 +305,21 @@ The workflow adapts based on which context sources are available:
 
 ```mermaid
 flowchart TD
-    START{What context<br/>sources exist?}
+    classDef decision fill:#3694fc,stroke:#0263fb,color:#fff
+    classDef full fill:#6100ff,stroke:#4a00cc,color:#fff
+    classDef road fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
+    classDef spec fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
+    classDef lean fill:#9ceed2,stroke:#00c2a0,color:#1a1a2e
+    classDef exec fill:#6100ff,stroke:#4a00cc,color:#fff
 
-    START -->|"JIRA + OpenSpec"| FULL["Full Flow<br/>JIRA = requirements authority<br/>OpenSpec = design + task detail<br/>Beads = execution tracking"]
-    START -->|"Roadmap + OpenSpec<br/>(no JIRA)"| ROAD["Roadmap Flow<br/>Roadmap = phase grouping<br/>OpenSpec = full requirements + design<br/>Beads = execution tracking"]
-    START -->|"OpenSpec only"| SPEC["Spec-Only Flow<br/>OpenSpec = everything<br/>Beads = execution tracking"]
-    START -->|"Beads only"| LEAN["Lean Flow<br/>Bead descriptions = work context<br/>No spec cross-referencing"]
+    START{What context<br/>sources exist?}:::decision
 
-    FULL -->|"Ticket prefix on beads/commits"| EXEC["generate-spec-beads<br/>then implement-beads"]
+    START -->|"JIRA + OpenSpec"| FULL["Full Flow<br/>JIRA = requirements authority<br/>OpenSpec = design + task detail<br/>Beads = execution tracking"]:::full
+    START -->|"Roadmap + OpenSpec<br/>(no JIRA)"| ROAD["Roadmap Flow<br/>Roadmap = phase grouping<br/>OpenSpec = full requirements + design<br/>Beads = execution tracking"]:::road
+    START -->|"OpenSpec only"| SPEC["Spec-Only Flow<br/>OpenSpec = everything<br/>Beads = execution tracking"]:::spec
+    START -->|"Beads only"| LEAN["Lean Flow<br/>Bead descriptions = work context<br/>No spec cross-referencing"]:::lean
+
+    FULL -->|"Ticket prefix on beads/commits"| EXEC["generate-spec-beads<br/>then implement-beads"]:::exec
     ROAD -->|"Epic prefix on beads/commits"| EXEC
     SPEC -->|"Change name prefix"| EXEC
     LEAN -->|"No prefix"| EXEC
