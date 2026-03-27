@@ -1,0 +1,31 @@
+# === AI-Driven Development ===
+
+# Claude Code
+.claude/settings.local.json
+.claude/.credentials.json
+
+# Beads (local database — comment out if you want shared task graph)
+.beads/
+
+# OpenSpec (generated artifacts)
+# openspec-output/
+
+# Python (uv)
+.venv/
+__pycache__/
+*.pyc
+.python-version
+
+# Node
+node_modules/
+
+# IDE
+.vscode/.ropeproject
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore.local

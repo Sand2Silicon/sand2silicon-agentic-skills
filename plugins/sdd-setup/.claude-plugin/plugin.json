@@ -1,8 +1,8 @@
 {
   "name": "sdd-setup",
-  "version": "1.0.0",
-  "description": "Skills for scaffolding and configuring VS Code devcontainer projects: create new projects, add Claude Code, add Beads issue tracking, and add the OpenSpec CLI.",
+  "version": "2.0.0",
+  "description": "Skills and a builder agent for scaffolding AI-driven development containers: create projects, add Claude Code, Beads, and OpenSpec. Includes shared lifecycle scripts, Dockerfile/devcontainer templates, and a troubleshooting agent.",
   "author": { "name": "Steven Peterson" },
   "category": "development",
-  "keywords": ["devcontainer", "docker", "vscode", "claudecode", "beads", "openspec", "scaffold", "setup"]
+  "keywords": ["devcontainer", "docker", "vscode", "claudecode", "beads", "openspec", "scaffold", "setup", "builder"]
 }
