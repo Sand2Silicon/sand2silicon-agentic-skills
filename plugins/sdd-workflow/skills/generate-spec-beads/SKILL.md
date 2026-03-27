@@ -10,6 +10,8 @@ Convert a planned body of work into a wired Beads dependency graph ready for `/i
 
 **Input**: `/generate-spec-beads <change-name>` (e.g. `add-auth-middleware`)
 
+**Prerequisites:** OpenSpec artifacts should exist at `openspec/changes/<change-name>/`. Use `/plan-spec` or `/spec-from-tickets` to generate them, or create them manually with `/opsx:propose`.
+
 **Primary path:** OpenSpec `tasks.md` is the task source. JIRA ticket acceptance criteria are the ultimate authority when active — if a spec and JIRA conflict, JIRA wins. A roadmap, when present, groups work into phases but is not itself a requirements source; specs/tasks carry the full detail.
 
 ---
@@ -353,3 +355,5 @@ Run a single `bd dep add <issue> <dep>` and read the full output. Most common ca
 | Create task issues without `--parent` | Breaks tree view, `bd epic status`, and `bd children` |
 | Use `git worktree add` directly | Always use `bd worktree create` for proper database redirect |
 | Omit `Agent:` field in descriptions | `/implement-beads` uses it to route work to the right agent type |
+
+ARGUMENTS: $ARGUMENTS

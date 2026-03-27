@@ -19,8 +19,8 @@
     {
       "name": "sdd-workflow",
       "source": "./plugins/sdd-workflow",
-      "description": "A suite of workflow skills for OpenSpec/Beads-driven development: distill workflows, generate roadmaps, create Beads task graphs, drive implementation, and audit spec completion.",
-      "version": "1.0.0",
+      "description": "Full lifecycle spec-driven development for AI agents: interactive planning, JIRA integration, bead graph generation, parallel implementation with review gates, and spec completion auditing.",
+      "version": "1.1.0",
       "category": "workflow"
     }
   ]

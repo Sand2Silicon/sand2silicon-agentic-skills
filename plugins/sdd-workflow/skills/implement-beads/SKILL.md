@@ -427,5 +427,7 @@ Next: <suggested action>
 - **Use `bd worktree create`, never `git worktree add`** — bd sets up the database redirect
 - **All work tracked in Beads** — claim before starting, close on completion, file gaps as beads
 - **Close beads individually** as tasks complete — no bulk-close without doing the work
+
+ARGUMENTS: $ARGUMENTS
 - Follow `design.md` decisions — flag deviations, don't silently override
 - Build/smoke gates require actually running the code, not claiming they passed

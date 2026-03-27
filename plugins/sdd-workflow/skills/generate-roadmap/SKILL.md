@@ -131,3 +131,5 @@ After writing, summarize:
 - **Making epics too vague** — "improve the system" is not actionable
 - **Skipping the gap analysis** — if you just restate the docs' TODO list, you've added no value
 - **Forgetting to ask about scope** — without a goal, the roadmap has no boundary
+
+ARGUMENTS: $ARGUMENTS
