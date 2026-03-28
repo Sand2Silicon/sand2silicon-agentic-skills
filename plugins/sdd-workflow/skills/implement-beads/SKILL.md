@@ -1,91 +1,162 @@
 ---
 name: implement-beads
-description: Implement a body of work tracked in Beads, guided by OpenSpec artifacts. Use when Beads issues have been created for an OpenSpec change and implementation should begin or resume. Accepts an OpenSpec change name (e.g. fix-core-inference-pipeline), a Beads epic ID (e.g. workspace-3ti), or no argument to auto-detect active work.
+description: Implement a body of work tracked in Beads, guided by spec artifacts (OpenSpec, JIRA, or roadmap). Use when Beads issues exist and implementation should begin or resume. Accepts an OpenSpec change name (e.g. add-auth-middleware), a Beads epic ID (e.g. workspace-3ti), or no argument to auto-detect active work.
 ---
 
 # Implement Beads
 
-Drive implementation of a body of work using Beads for task tracking and OpenSpec for spec context.
+Drive implementation of Beads-tracked work. Beads is the execution engine; OpenSpec, JIRA, and roadmap epics provide context when available.
 
-**Input**: One of:
-- An OpenSpec change name: `/implement-beads fix-core-inference-pipeline`
-- A Beads epic ID: `/implement-beads workspace-3ti`
+**Input** (one of):
+- OpenSpec change name: `/implement-beads add-auth-middleware`
+- Beads epic ID: `/implement-beads workspace-3ti`
 - No argument: auto-detect from active/ready work
 
 ---
 
-## Step 0: Pre-flight — ask the user about workflow mode
+## Orchestration Model — READ FIRST
 
-Before starting any work, prompt the user:
+**You are the orchestrator, not a worker.** Your job: plan waves, dispatch child agents, track bead state, manage flow. You do not write code, tests, or reviews — you delegate all of that.
+
+**Hard rules:**
+1. **Parallelize aggressively.** Before each wave, identify ALL independent beads and dispatch them simultaneously. Sequential only for true data dependencies.
+2. **Use child agents for all work.** Each bead is handled by a dispatched agent — implementation, test-writing, or review.
+3. **Every non-trivial feature follows the impl/test/review triad.** Impl and test agents run concurrently and independently. Review runs after both complete.
+4. **Tests come from specs and acceptance criteria, not implementation code.** Test agents must never read the implementation.
+5. **Review agents file gaps as new beads** routed back to impl/test agents. Never skip review gates.
+6. **All work is tracked in Beads.** Claim before starting, close on completion, verify every closure.
+
+**Agent selection:**
+- **Classic SubAgents** (`Agent` tool): Best for focused, bounded tasks — one bead, clear spec, no cross-agent coordination. Faster and more token-efficient.
+- **Team Agents** (when enabled in project config): Best for multi-bead waves needing shared workspace visibility or longer-running coordinated work. Prefer when their concurrency benefits apply.
+
+Default to classic subagents for individual beads. Use Team Agents for coordinated wave dispatch when available.
+
+---
+
+## Step 0: Pre-flight
+
+### 0a. Detect project context
+
+Read project configuration to determine the toolchain. Check `CLAUDE.md`, then inspect for `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, `Makefile`, etc.
+
+Store these for all subagent prompts:
+
+| Setting | Detect from | Fallback |
+|---------|------------|----------|
+| Package install | `pyproject.toml` with `[tool.uv]` → `uv sync`; `package.json` → `npm install` | `pip install -r requirements.txt` |
+| Test command | CLAUDE.md or `pytest.ini` / `pyproject.toml [tool.pytest]` | `python3 -m pytest tests/ -v` |
+| Lint command | CLAUDE.md or lint tool in deps | Skip if not found |
+| Type check | CLAUDE.md or `mypy`/`pyright` in deps | Skip if not found |
+| Source root | Top-level package dir (`app/`, `src/`, project name) | `.` |
+| Entry point | CLAUDE.md or `pyproject.toml [project.scripts]` | None |
+
+### 0b. Ensure Dolt server is running
+
+Parallel subagents share the Dolt server. Without it running persistently, each `bd` command auto-starts/stops Dolt, causing lock contention.
+
+```bash
+if bd stats 2>/dev/null; then
+  echo "Dolt server already running"
+else
+  rm -f .beads/dolt-server.lock .beads/dolt/.dolt/noms/LOCK .beads/dolt/.dolt/stats/.dolt/noms/LOCK
+  bd dolt start && sleep 2 && bd stats
+fi
+```
+
+If `bd stats` fails, check `.beads/dolt-server.log`. Fix before proceeding.
+
+### 0c. Detect context sources
+
+Determine which context layers are available:
+
+```bash
+ls openspec/changes/ 2>/dev/null                    # OpenSpec?
+ls roadmap.md docs/roadmap.md 2>/dev/null            # Roadmap?
+# JIRA: check if JIRA MCP server is configured in the environment
+```
+
+**Context hierarchy:**
+- **JIRA** (when active): Ultimate authority for requirements and acceptance criteria. Query via JIRA MCP server — fetch once, cache, refer back when criteria are unclear. If JIRA and a spec conflict, JIRA wins.
+- **OpenSpec** (when active): Provides design decisions, spec scenarios, task structure, and expanded acceptance criteria. This is where the bulk of implementation detail lives.
+- **Roadmap** (when present): Groups work into phases/epics for batching. When JIRA is active, the roadmap is just an organizational bridge — track to JIRA ticket numbers, not roadmap phases. When no JIRA, roadmap epic descriptions provide milestone context, but OpenSpec specs/tasks still carry the full requirements.
+- **None of the above**: Beads descriptions alone provide the work context.
+
+Also scan ready beads for `Reference:` lines pointing to external codebases — note org/repo pairs for subagent prompts.
+
+### 0d. Ask workflow mode
 
 > **Workflow options:**
-> 1. **Work in a git worktree?** (Recommended for large changes) — creates a feature branch off the current branch and works in an isolated worktree. Changes are reviewed before merging back.
-> 2. **Work on the current branch?** — implements directly on the current branch. Still requires review before commit.
+> 1. **Worktree** (recommended for large changes) — isolated feature branch via `bd worktree create`
+> 2. **Current branch** — work in place; changes staged for review, NOT auto-committed
 >
 > **Choose: worktree / current branch**
 
-**If worktree is chosen:**
+**If worktree:**
 ```bash
-# IMPORTANT: Use bd worktree, NOT git worktree add.
-# bd worktree create sets up a .beads/redirect file so all bd commands
-# in the worktree resolve to the main repo's .beads database.
-# Without this, bd auto-discovers a local .beads/ in the worktree and
-# starts a Dolt server against it — which has no database.
+# ALWAYS use bd worktree, never git worktree add.
+# bd worktree create sets up .beads/redirect so bd commands resolve to the main database.
 bd worktree create ".worktrees/<change-name>" --branch "impl/<change-name>"
 cd ".worktrees/<change-name>"
 ```
-All subsequent work happens in the worktree. At session close, changes are reviewed before merging.
 
-**If current branch is chosen:**
-Work proceeds on the current branch. No worktree is created.
+**If current branch:** Work proceeds in place. Changes are staged for user review — do NOT commit automatically.
 
-Store the choice — it affects the session close procedure (Step 8).
+Store the choice for Step 7.
 
 ---
 
 ## Step 1: Identify the body of work
 
-**If a change name was given** (contains `-` and no `-` prefix, e.g. `fix-core-inference-pipeline`):
+**If a change name was given:**
 ```bash
-ls openspec/changes/<name>/          # Verify change exists
-bd search "<name>" 2>/dev/null        # Find related epic
+ls openspec/changes/<name>/ 2>/dev/null    # Verify change exists (if OpenSpec active)
+bd search "<name>" 2>/dev/null              # Find related epic
 ```
 
-**If a Beads ID was given** (e.g. `workspace-abc`):
+**If a Beads epic ID was given:**
 ```bash
-bd show <id>                          # Read epic description
+bd show <id>                                # Read epic description
 ```
-Extract the OpenSpec change name from the epic description if present.
+Extract the change name from the epic description if present.
 
 **If no argument given**, auto-detect:
 ```bash
-bd list --status=in_progress --json  # Resume in-progress work first
-bd ready                              # Then check unblocked work
-ls openspec/changes/                  # List active changes
+bd list --status=in_progress --json         # Resume in-progress work first
+bd ready                                     # Check unblocked work
+ls openspec/changes/ 2>/dev/null            # List active changes
 ```
-- If exactly one in-progress item or one active change: proceed
-- If multiple: use **AskUserQuestion** to let the user choose
+- If exactly one candidate: proceed
+- If multiple: **AskUserQuestion** to let the user choose
 
-Always announce: "Implementing: **<change-name>** (epic: <id>)" and how to override.
+Announce: "Implementing: **\<change-name\>** (epic: \<id\>)"
 
 ---
 
-## Step 2: Load spec context
+## Step 2: Load context
 
-Read these files before writing any code (paths relative to `openspec/changes/<change-name>/`):
+### OpenSpec (when active)
+
+Read before writing any code (paths relative to `openspec/changes/<change-name>/`):
 
 | File | Purpose |
 |------|---------|
-| `proposal.md` | Why this change exists, goals/non-goals |
+| `proposal.md` | Goals, non-goals, motivation |
 | `design.md` | Key decisions (D1–DN) — read before touching architecture |
-| `specs/*/spec.md` | Requirements and acceptance scenarios per spec |
+| `specs/*/spec.md` | Requirements and acceptance scenarios |
 | `tasks.md` | Ordered task list with section numbers |
 
-Read the following files for context:
-- `openspec/changes/<name>/proposal.md`
-- `openspec/changes/<name>/design.md`
-- `openspec/changes/<name>/tasks.md`
-- Each spec file listed in tasks.md or design.md
+### JIRA (when active)
+
+JIRA requirements should already be reflected in the OpenSpec artifacts and bead descriptions from earlier planning phases. Verify by spot-checking key tickets via JIRA MCP. Cache the acceptance criteria — these are ground truth for "done." When a bead's acceptance criteria and JIRA conflict, JIRA wins. Always refer back to JIRA when acceptance criteria are ambiguous during implementation.
+
+### Roadmap (when active, no JIRA)
+
+Read `roadmap.md` and identify which epic this work belongs to. Track which roadmap epic tasks are being addressed.
+
+### Mark spec-tasks in progress
+
+When OpenSpec is active, update `tasks.md` entries covered by this session's beads from `[ ]` to `[~]` to indicate work is underway.
 
 ---
 
@@ -93,213 +164,217 @@ Read the following files for context:
 
 ```bash
 bd ready                         # Unblocked issues ready to work
-bd list --status=in_progress     # Already claimed work
-bd show <epic-id>                # Full epic context and dependency tree
+bd list --status=in_progress     # Already claimed — resume these first
+bd show <epic-id>                # Full dependency tree
 ```
 
 Show the user:
-- How many beads total / closed / remaining
-- Which are unblocked right now
-- Any already in-progress (resume these first)
+- Total / closed / remaining beads
+- Which are unblocked now (grouped by type: impl, test, review)
+- Any in-progress beads (resume these first)
 
 ---
 
-## Step 4: Implement (loop until done or blocked)
+## Step 4: Implement — parallel waves
 
-### Parallelism first — identify concurrent work before starting
+### 4a. Plan waves
 
-Before claiming any bead, scan the full dependency graph to find which beads can be worked concurrently:
+Before claiming any bead, map the full dependency graph:
 
 ```bash
-bd ready                      # All unblocked beads right now
-bd show <epic-id>             # Full dependency tree
+bd ready                         # All currently unblocked
+bd show <epic-id>                # Dependency tree
 ```
 
-**Group beads by wave**: beads with no dependencies between each other can be worked simultaneously. Always look for this before working sequentially.
+Group beads into waves — beads with no mutual dependencies go in the same wave. Within each wave, identify impl/test pairs for simultaneous dispatch.
 
-### Use subagents and Team Agents for parallel execution
+### 4b. Dispatch agents
 
-When multiple beads are unblocked and independent, **do not work them one at a time**. Instead:
+**Default mode is parallel dispatch.** When N beads are unblocked and independent, dispatch N agents simultaneously.
 
-- **Use `Agent` tool (subagents)** to fan out independent tasks in parallel — each subagent handles one bead end-to-end (claim → read spec → implement → close).
-- **Use Claude Team Agents** when available for even higher concurrency on large bodies of work.
-- **Work sequentially** only when tasks have true data dependencies (e.g., bead B requires an interface defined in bead A).
-
-**Example parallel dispatch:**
 ```
-Wave 1 (run in parallel):
-  → Agent: implement workspace-5ka (add dependency)
-  → Agent: implement workspace-olb (scaffold module)
-  → Agent: implement workspace-q2r (write config loader)
+Wave 1 (all dispatched in parallel):
+  -> Agent (impl):   workspace-5ka  — add cache layer
+  -> Agent (test):   workspace-5kt  — tests for cache layer (from spec)
+  -> Agent (impl):   workspace-olb  — scaffold API module
+  -> Agent (test):   workspace-olt  — tests for API module (from spec)
+[wait for all to complete]
 
-Wave 2 (after Wave 1 closes, now unblocked):
-  → Agent: implement workspace-7mn (integrates all three above)
+Wave 1 reviews (review beads unblock after impl+test close):
+  -> Agent (review): workspace-5kr  — review cache layer
+  -> Agent (review): workspace-olr  — review API module
+[wait; handle gap beads if filed]
+
+Wave 2 (unblocked after Wave 1 reviews close):
+  -> Agent (impl):   workspace-7mn  — integrate cache + API
+  -> Agent (test):   workspace-7mt  — integration tests
 ```
 
-After launching parallel agents, **wait for all to complete**, then run `bd ready` to identify the next wave.
+After each wave completes, run `bd ready` to identify the next wave and dispatch immediately.
 
-### Per-bead workflow (each agent or sequential step)
+### 4c. Per-agent workflows
 
-For each bead being worked:
+The `Agent:` field in each bead's description determines which agent type handles it.
 
-1. **Read the issue**
+#### Implementation agent (`Agent: implementation-agent`)
+
+1. `bd show <id>` — read the issue; note `OpenSpec:`, `Spec:`, `Design:`, `Accept:` refs
+2. `bd update <id> --claim`
+3. Read the spec/acceptance criteria for this task before coding
+4. **If bead has `Reference:` lines** — fetch source from the external repo via GitHub MCP (`mcp__github__get_file_contents`). Adapt to fit the target project; do not copy blindly. Note any reference tests for the test agent.
+5. Implement. Keep changes minimal and scoped. Follow `design.md` decisions — flag deviations, don't silently override.
+6. `bd close <id>` — **verify output contains `Closed`**. If not, diagnose before continuing.
+
+#### Test-writer agent (`Agent: test-writer-agent`)
+
+1. `bd show <id>` — read spec/acceptance refs
+2. `bd update <id> --claim`
+3. Read the spec and acceptance criteria. **If JIRA active**, also check JIRA ticket criteria — these are ground truth.
+4. **Write tests from specs and acceptance criteria ONLY — never from implementation code.** Tests define the contract and should be valid before the implementation exists.
+5. **If bead has `Reference:` lines pointing to tests** — fetch and adapt into a `ported` test suite (e.g., `tests/ported/test_<feature>.py`). Label clearly. These complement spec-derived tests.
+6. `bd close <id>` — verify `Closed`
+
+#### Review agent (`Agent: review-agent`)
+
+1. `bd show <id>` — read review scope and acceptance criteria
+2. `bd update <id> --claim`
+3. **Independently** read implementation code and test code — do not rely on other agents' summaries
+4. **Run the tests** against the implementation using the detected test command
+5. Verify each acceptance scenario is satisfied by the code AND covered by tests
+6. Invoke `/simplify` on changed files for quality/efficiency check
+7. **If gaps found:** create a new bead for each gap:
    ```bash
-   bd show <id>
+   bd create --title="<prefix>: Gap — <description>" \
+     --description="<what is missing or incorrect>
+   Accept: <specific criteria for the fix>
+   OpenSpec: change:<change-name>/tasks.md: X.Y
+   Agent: implementation-agent" \
+     --type=task --parent <epic-id> \
+     --deps <review-bead-id>
    ```
-   Note: the `OpenSpec: change:<name>/tasks.md: X.Y` cross-ref and `Spec:` and `Design:` refs in the description.
+   Always include `Agent:` (route to `implementation-agent` or `test-writer-agent`) and `OpenSpec:` (for sync tracking) in gap bead descriptions. Report gap bead IDs to the orchestrator. Do NOT close the review bead.
+8. After gap beads are resolved by the orchestrator: re-verify
+9. **Only close when all scenarios pass.** `bd close <id>` — verify `Closed`
 
-2. **Claim it**
-   ```bash
-   bd update <id> --claim
-   ```
+### 4d. Wave completion verification (orchestrator)
 
-3. **Read the spec context** for this specific task
-   Locate the referenced requirement in the spec file. Understand acceptance scenarios before writing code.
+After each wave:
+```bash
+bd list --status=in_progress     # Must be ZERO for completed waves
+bd ready                         # What unlocked next
+```
+If any beads are stuck in `in_progress`, STOP and investigate before proceeding.
 
-4. **Implement the change**
-   - Keep changes minimal and scoped to this task
-   - Follow decisions in `design.md` — don't deviate without flagging
-   - If you discover a design issue, pause and report before continuing
+### 4e. Subagent prompt template
 
-5. **Close the bead — VERIFY CLOSURE**
-   ```bash
-   bd close <id>
-   ```
-   **CRITICAL:** Check that the output contains `✓ Closed`. If it does not, the close FAILED. Do NOT proceed — diagnose the failure (usually a dependency still in_progress).
+Include this context in every subagent dispatch:
 
-   **NEVER** pipe `bd close` output to `/dev/null`. Always read the output.
+```
+Bead: <id> — <title>
+Role: implementation-agent | test-writer-agent | review-agent
+Project: test=<cmd>, lint=<cmd>, install=<cmd>, source_root=<path>
+<if JIRA active>  JIRA: <ticket-key> — acceptance criteria cached from MCP
+<if reference repos>  Reference: use mcp__github__get_file_contents owner="<org>" repo="<repo>"
+<if test-writer>  Write tests from spec/acceptance criteria ONLY — do not read implementation code.
+<if review-agent>  File gap beads for issues found — do not fix them. Only close when all criteria verified.
 
-   The PostToolUse hook will automatically sync this to `tasks.md`.
+Steps: bd show <id> -> bd update <id> --claim -> [do work] -> bd close <id> (verify Closed)
+```
 
-6. **Verify wave completion after each wave**
-   ```bash
-   bd list --status=in_progress    # Must show ZERO in_progress for completed waves
-   bd ready                        # Shows what unlocked
-   ```
-   If any beads are stuck in `in_progress`, STOP and investigate before proceeding.
+### Pause conditions
 
-**Pause if:**
-- A task is unclear → ask before implementing
-- Implementation contradicts a design decision → flag and ask
-- An error or unexpected behavior blocks progress → report and wait
-- A `bd close` fails → diagnose before continuing
+- Task unclear → ask before implementing
+- Design contradiction → flag and ask
+- Error blocks progress → report and wait
+- `bd close` fails → diagnose before continuing
 - User interrupts
 
 ---
 
-## Step 5: Review tasks — MUST use a separate review agent
+## Step 5: Build/smoke gate
 
-When you reach review-type beads (title contains "Review:", "Spec compliance", or description contains `Agent: review-agent`):
+**Runs ONLY after ALL implementation, test, and review beads are closed.** Never mid-implementation — partial code causes spurious failures.
 
-**CRITICAL: Implementation agents must NOT review their own work.**
-
-Spawn a **separate Agent** (subagent) for each review bead. The review agent:
-1. Reads the review bead's description and acceptance criteria
-2. Reads the relevant source code independently
-3. Verifies each spec scenario is satisfied
-4. If a scenario fails: the review agent reports the gap. The implementation agent then creates a new Beads task for the gap, implements it, and the review agent re-verifies.
-5. Only when the review agent confirms all scenarios pass does the review bead get closed.
-
-**Example:**
-```
-→ Agent (review): "Review workspace-tfu — read all spec scenarios in specs/*/spec.md,
-   verify each is satisfied in the implementation code. Report gaps."
-```
-
-For the **code quality audit** bead, the review agent should also invoke the `/simplify` skill on changed files to check for reuse, quality, and efficiency issues.
-
-For the **test suite** bead, the review agent MUST actually run:
 ```bash
-python3 -m pytest tests/ --cov=src --cov-report=term-missing -v
+# Confirm readiness
+bd list --status=in_progress                        # Must be EMPTY
+bd list --status=open | grep -v "BUILD\|GATE"       # Must be EMPTY (only gate bead remains)
 ```
+
+Run validation using the commands detected in Step 0:
+```bash
+<package_install>                                    # Install/sync deps
+<entry_point>                                        # Run entry point (if detected)
+<test_command> --cov=<source_root>                   # Full test suite + coverage
+<lint_command>                                        # Lint (if configured)
+<type_check_command>                                  # Type check (if configured)
+```
+
+**The gate MUST actually execute.** Do not close the gate bead without running the commands and verifying output.
 
 ---
 
-## Step 6: Build/smoke gate (if a gate bead exists)
-
-Run the project-specific validation steps listed in the gate bead's description. Common pattern:
-```bash
-# Install deps
-pip install -r requirements.txt   # or npm install, etc.
-# Run the entry point
-python -m src.predictor            # or equivalent
-# Run tests
-python3 -m pytest tests/ -v
-```
-Confirm: no exceptions, output values are plausible, key log lines present.
-
-**The build gate MUST actually be executed.** Do not close the build gate bead without running the commands and verifying the output.
-
----
-
-## Step 7: Pre-commit verification — MANDATORY before commit
-
-Before creating any commit, run this checklist:
+## Step 6: Pre-commit verification — MANDATORY
 
 ```bash
 # 1. Check for stuck beads
 bd list --status=in_progress
-# If ANY in_progress beads remain for this body of work → STOP. Do not commit.
-# Alert the user: "N beads still in_progress: <list>. These must be completed or
-# explicitly deferred before committing."
+# If ANY remain → STOP. Do not proceed.
 
-# 2. Run the sync script
-python3 scripts/sync-openspec-tasks.py
+# 2. Sync spec state (if OpenSpec active)
+test -s scripts/sync-openspec-tasks.py && python3 scripts/sync-openspec-tasks.py
 
-# 3. Run the spec completion auditor
+# 3. Spec completion audit (if OpenSpec active)
 # /spec-completion-auditor <change-name>
-# If auditor reports gaps → STOP. Do not commit until gaps are resolved.
+# If gaps reported → STOP until resolved.
 
 # 4. Final test run
-python3 -m pytest tests/ -v
+<test_command>
 ```
 
-**If beads remain in_progress:**
-- List which beads are stuck and why
-- Ask the user whether to: (a) complete them now, (b) defer them with `bd update <id> --status=open`, or (c) proceed anyway with the user's explicit approval
-- Do NOT silently commit with incomplete beads
+**If beads remain in_progress:** list them, explain why, ask the user: (a) complete now, (b) defer with `bd update <id> --status=open`, or (c) proceed with explicit approval. Do NOT silently proceed.
 
 ---
 
-## Step 8: Session close
+## Step 7: Session close
 
-### If working in a worktree (Step 0 choice):
+### Worktree mode
 ```bash
 # 1. Commit in worktree
 git add <changed-files>
-git commit -m "<change-name>: <one-line summary>"
+git commit -m "<prefix><change-name>: <summary>"
 
-# 2. Return to main working directory
-cd /workspace
+# 2. Return to original working directory
+cd <original-directory>
 
 # 3. Merge the feature branch
 git merge --no-ff "impl/<change-name>"
 
-# 4. Clean up worktree (bd worktree remove runs safety checks for uncommitted work)
+# 4. Clean up (bd worktree remove runs safety checks)
 bd worktree remove ".worktrees/<change-name>"
 
-# 5. Push
-bd dolt push
+# 5. Push (with user approval)
 git push
 ```
 
-### If working on current branch (Step 0 choice):
+### Current branch mode
 ```bash
-# 1. Stage and commit
+# Stage changes for user review — DO NOT commit automatically
 git add <changed-files>
-git commit -m "<change-name>: <one-line summary of what was implemented>"
-
-# 2. Push beads and code
-bd dolt push
-git push
+git status
 ```
+Present staged changes and suggest a commit message. The user decides when to commit.
 
-### Post-commit (both modes):
+### Ticket/change prefix for commits
 
-If the sync script reports all tasks complete, suggest archiving:
-```
-/openspec-archive-change <change-name>
-```
+When JIRA is active, prefix with the ticket number: `PROJ-123: add-auth-middleware: implement OAuth flow`. When using a roadmap epic (no JIRA), prefix with the epic identifier. Otherwise, use the change name alone.
+
+### Post-session (both modes)
+
+When OpenSpec is active and all beads are closed:
+1. Run `python3 scripts/sync-openspec-tasks.py` to mark spec-tasks `[x]`
+2. Run `/spec-completion-auditor <change-name>` to verify completeness
+3. If all tasks verified: suggest `/openspec-archive-change <change-name>`
 
 ---
 
@@ -307,40 +382,52 @@ If the sync script reports all tasks complete, suggest archiving:
 
 **At start:**
 ```
-## Implementing: fix-core-inference-pipeline
-Epic: workspace-3ti | Progress: 0/24 beads closed
-Unblocked now: workspace-5ka, workspace-olb
-Mode: worktree (branch: impl/fix-core-inference-pipeline)
+## Implementing: <change-name>
+Epic: <id> | Progress: 0/N beads closed
+Unblocked: <list of ready beads by type>
+Mode: <worktree | current branch>
+Context: <OpenSpec | JIRA PROJ-123 | Roadmap Phase 2 | Beads only>
 ```
 
-**After each wave** (display-format summaries):
+**After each wave:**
 ```
-Wave 1 complete (3 beads closed):
-  ✓ workspace-5ka — Add chronos-forecasting to requirements.txt [change:fix-core-inference-pipeline/tasks.md: 1.1]
-  ✓ workspace-olb — Scaffold DataFeed module [change:fix-core-inference-pipeline/tasks.md: 1.2]
-  ✓ workspace-q2r — Write config loader [change:fix-core-inference-pipeline/tasks.md: 1.3]
-  Verification: 0 in_progress | 4 now unblocked → dispatching Wave 2
+Wave 1 impl+test complete (N beads closed):
+  V <id> (impl) — <title>
+  V <id> (test) — <title>
+  Verification: 0 in_progress | N review beads unblocked -> dispatching reviews
+
+Wave 1 reviews (N closed):
+  V <id> — Review: passed
+  ! <id> — Review: 1 gap filed -> <gap-id> (routed to impl-agent)
 ```
 
 **On completion:**
 ```
-## Done: fix-core-inference-pipeline
-24/24 beads closed ✓
-tasks.md: 15/15 tasks complete ✓
-Review: passed (independent agent verified)
+## Done: <change-name>
+N/N beads closed
+Spec: M/M tasks complete   (if OpenSpec active)
+Reviews: passed
 Build gate: passed
-Next: /openspec-archive-change fix-core-inference-pipeline
+Next: <suggested action>
 ```
 
 ---
 
 ## Guardrails
 
-- Always read the relevant spec section before implementing a task
-- Follow design decisions in `design.md` — flag deviations, don't silently override
-- **NEVER suppress `bd close` output** — always verify the `✓ Closed` confirmation
-- **ALWAYS run `bd list --status=in_progress` after each wave** — catch stuck beads immediately
-- **Review beads MUST be handled by a separate agent** — the implementation agent must not review its own work
-- Build/smoke gates require actually running the code — not just claiming they passed
-- **Do NOT commit while beads remain in_progress** — alert the user and get explicit direction
-- Close beads one at a time as each task completes — don't bulk-close without doing the work
+- **You are the orchestrator** — delegate all implementation, testing, and review to child agents
+- **Parallelize by default** — `bd ready` for independent beads, dispatch concurrently; sequential only for true data dependencies
+- **Test agents work from specs, not implementation** — dispatch in parallel with (not after) implementation agents
+- **Every feature goes through review** — a separate review-agent verifies, files gap beads, and iterates
+- **Build gate runs ONLY after all beads close** — never mid-implementation
+- **Never suppress `bd close` output** — always verify the `Closed` confirmation
+- **Always verify wave completion** — `bd list --status=in_progress` after each wave; catch stuck beads immediately
+- **Review agents never review their own work** — separation of concerns is mandatory
+- **No auto-commit on current branch** — stage and present to user
+- **Use `bd worktree create`, never `git worktree add`** — bd sets up the database redirect
+- **All work tracked in Beads** — claim before starting, close on completion, file gaps as beads
+- **Close beads individually** as tasks complete — no bulk-close without doing the work
+
+ARGUMENTS: $ARGUMENTS
+- Follow `design.md` decisions — flag deviations, don't silently override
+- Build/smoke gates require actually running the code, not claiming they passed

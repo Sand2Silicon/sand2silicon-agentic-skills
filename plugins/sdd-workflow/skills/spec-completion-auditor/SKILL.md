@@ -1,7 +1,7 @@
 ---
 name: spec-completion-auditor
 description: Audit for drift between closed Beads issues and open OpenSpec tasks. Use when Beads have been closed but OpenSpec tasks may still show as incomplete, or when you want to verify that work described in spec tasks was actually implemented before archiving. Runs a verification agent that cross-checks state and produces an actionable report.
-user-invokable: false
+user-invocable: false
 ---
 
 # Spec Completion Auditor
@@ -38,7 +38,7 @@ Parse the `change:<name>/tasks.md: X.Y` field from each issue description (or le
 ```bash
 cat openspec/changes/<name>/tasks.md
 ```
-Parse `- [x]` (complete) and `- [ ]` (open) entries with their section numbers.
+Parse `- [x]` (complete), `- [ ]` (open), and `- [~]` (in-progress) entries with their section numbers. Treat `[~]` the same as `[ ]` for mismatch detection — both are "not yet complete."
 
 ### 3. Identify mismatches
 

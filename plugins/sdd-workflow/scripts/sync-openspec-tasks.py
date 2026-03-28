@@ -37,7 +37,8 @@ OPENSPEC_CHANGES = WORKSPACE / "openspec" / "changes"
 SCOPED_REF_PATTERN = re.compile(r"change:([\w-]+)/tasks\.md:?\s*([\d]+\.[\d]+)(?!\d)")
 # Legacy unscoped format: tasks.md: X.Y (ambiguous across changes)
 UNSCOPED_REF_PATTERN = re.compile(r"tasks\.md:?\s*([\d]+\.[\d]+)(?!\d)")
-OPEN_TASK_PATTERN = re.compile(r"^(\s*- \[ \] )([\d]+\.[\d]+)(?!\d)(\b.*)", re.MULTILINE)
+# Matches open [ ] and in-progress [~] tasks — both transition to [x] on bead closure
+OPEN_TASK_PATTERN = re.compile(r"^(\s*- \[[ ~]\] )([\d]+\.[\d]+)(?!\d)(\b.*)", re.MULTILINE)
 DONE_TASK_PATTERN = re.compile(r"- \[x\] ([\d]+\.[\d]+)(?!\d)", re.MULTILINE)
 
 
@@ -107,8 +108,9 @@ def mark_tasks_complete(tasks_file: Path, refs: set[str]) -> tuple[str, list[str
     def replacer(m):
         prefix, ref, rest = m.group(1), m.group(2), m.group(3)
         if ref in refs:
-            changes.append(f"  task {ref}: [ ] → [x]")
-            return prefix.replace("[ ]", "[x]") + ref + rest
+            old_marker = "[~]" if "[~]" in prefix else "[ ]"
+            changes.append(f"  task {ref}: {old_marker} → [x]")
+            return prefix.replace(old_marker, "[x]") + ref + rest
         return m.group(0)
 
     new_content = OPEN_TASK_PATTERN.sub(replacer, content)
@@ -118,7 +120,8 @@ def mark_tasks_complete(tasks_file: Path, refs: set[str]) -> tuple[str, list[str
 
 
 def get_open_task_refs(content: str) -> set[str]:
-    return set(re.findall(r"^\s*- \[ \] (?<!\d)([\d]+\.[\d]+)(?!\d)", content, re.MULTILINE))
+    """Return refs for tasks that are open [ ] or in-progress [~]."""
+    return set(re.findall(r"^\s*- \[[ ~]\] (?<!\d)([\d]+\.[\d]+)(?!\d)", content, re.MULTILINE))
 
 
 def get_done_task_refs(content: str) -> set[str]:

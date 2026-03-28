@@ -1,7 +1,7 @@
 ---
 name: generate-roadmap
 description: Research a project's actual state vs documented state and generate a phased roadmap of epics. Reads all docs, code, and completed-work logs to find gaps, broken assumptions, and missing capabilities — then synthesizes them into high-level milestones for OpenSpec planning.
-user_invocable: true
+user-invocable: true
 ---
 
 # Generate Roadmap
@@ -131,3 +131,5 @@ After writing, summarize:
 - **Making epics too vague** — "improve the system" is not actionable
 - **Skipping the gap analysis** — if you just restate the docs' TODO list, you've added no value
 - **Forgetting to ask about scope** — without a goal, the roadmap has no boundary
+
+ARGUMENTS: $ARGUMENTS

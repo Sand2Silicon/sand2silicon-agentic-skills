@@ -5,7 +5,7 @@ license: MIT
 metadata:
   author: user
   version: "1.0"
-user_invocable: true
+user-invocable: true
 ---
 
 Analyze a conversation or prompt and extract a reusable artifact from it.
@@ -64,7 +64,7 @@ Analyze a conversation or prompt and extract a reusable artifact from it.
 
    **If skill:**
    - Write to project-local `.claude/skills/<name>/SKILL.md`
-   - Include frontmatter (name, description, user_invocable: true)
+   - Include frontmatter (name, description, user-invocable: true)
    - look for a /create-skill skill to assist or research the format: https://agentskills.io/specification
    - Structure the skill as phases with clear handoff points
    - Use AskUserQuestion at decision points identified in step 2
