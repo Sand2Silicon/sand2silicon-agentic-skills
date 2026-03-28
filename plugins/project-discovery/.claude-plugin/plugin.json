@@ -1,0 +1,8 @@
+{
+  "name": "project-discovery",
+  "version": "1.0.0",
+  "description": "Technical due diligence for open-source projects: health, architecture, competitive landscape, and investment viability — with interactive goal-scoping and focused deep-dive reports.",
+  "author": { "name": "Steven Peterson" },
+  "category": "research",
+  "keywords": ["oss", "research", "discovery", "due-diligence", "project-evaluation", "competitive-analysis", "architecture", "feasibility"]
+}
