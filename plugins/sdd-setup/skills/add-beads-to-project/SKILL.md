@@ -1,104 +1,142 @@
 ---
 name: add-beads-to-project
-description: Integrate beads (`bd` CLI) into a project's dev container. Beads is a distributed, graph-based issue tracker for AI coding agents — it replaces markdown task plans with a dependency-aware task graph backed by an embedded version-controlled database. Use when the user wants to add beads to a devcontainer, set up the bd CLI, or configure Claude Code hooks for beads.
+description: Add Beads (bd CLI + dolt database) to an existing devcontainer project. Beads is a dependency-aware issue graph for AI coding agents, backed by an embedded Dolt database. Both dolt and bd are user-space tools installed to ~/.local/bin by setup_devcontainer.sh (postCreateCommand) -- NOT in the Dockerfile. Use when the user wants to add beads to a devcontainer, set up the bd CLI, or configure Claude Code hooks for beads. Do NOT ask about Bedrock vs Anthropic -- beads does not care about auth method.
 tools: Read, Edit, Write, Bash
 ---
 
-# Add Beads to a Dev Container Project
+# Add Beads to an Existing Dev Container Project
 
-This skill installs the `bd` (beads) CLI and its `dolt` database backend into an existing devcontainer, then wires up Claude Code hooks so beads context loads automatically at the start of every session.
+This skill adds the `bd` (beads) CLI and its `dolt` database backend to an **existing** devcontainer project. Both are **user-space tools** installed to `~/.local/bin` by `setup_devcontainer.sh` via `postCreateCommand`. They are NOT installed in the Dockerfile.
 
-**What beads provides**: A dependency-aware issue graph for AI coding agents. Issues are stored in a Dolt database (an embedded, version-controlled SQL store) — not markdown files — so the agent can query, update, and traverse task graphs programmatically. No external services or ports required.
+**Key architecture**: The Dockerfile only needs `ENV PATH="/home/appuser/.local/bin:${PATH}"` so that dolt and bd are on PATH. The actual binary installs happen in `setup_devcontainer.sh`, which runs as the container user at container creation time.
+
+**What beads provides**: A dependency-aware issue graph for AI coding agents. Issues are stored in a Dolt database (an embedded, version-controlled SQL store) so the agent can query, update, and traverse task graphs programmatically. No external services or ports required.
+
+**Auth is irrelevant**: Beads does not care about Bedrock vs Anthropic vs Vertex. Do NOT ask the user about authentication method -- that is a Claude Code concern, not a beads concern.
 
 ---
 
-## Step 1 — Read existing devcontainer state
+## Step 1 -- Read existing devcontainer state
 
-Read the existing files before making changes:
+Read these files before making any changes:
 
-- `.devcontainer/Dockerfile`
+- `.devcontainer/setup_devcontainer.sh` (must exist or will be created)
 - `.devcontainer/devcontainer.json`
+- `.devcontainer/Dockerfile` (or `Dockerfile` at repo root if no `.devcontainer/Dockerfile`)
+- `.gitignore` (if it exists at the repo root)
 
-Identify:
-- Which user the Dockerfile switches to (all installs must run as root, before any `USER` switch)
-- Whether a `postCreateCommand` already exists in `devcontainer.json`
-- Whether `.gitignore` exists at the repo root
-- Whether `dolt` and `bd` are already present in the Dockerfile
+Determine:
 
----
+1. **Is dolt already installed?** -- Search the setup script for `dolt` install commands
+2. **Is bd already installed?** -- Search the setup script for `bd` or `beads` install commands
+3. **Is `~/.local/bin` on PATH in the Dockerfile?** -- Look for `ENV PATH="/home/appuser/.local/bin:${PATH}"` (or equivalent with the actual username)
+4. **Does `postCreateCommand` already point to `setup_devcontainer.sh`?** -- Check `devcontainer.json`
+5. **Is `.beads/` in `.gitignore`?** -- Check the gitignore file
 
-## Step 2 — Add dolt to the Dockerfile
-
-Beads requires `dolt` as its database backend. Install dolt before beads in the Dockerfile.
-
-Pin the version using a build ARG for layer cache stability:
-
-```dockerfile
-# Install dolt (database backend for beads)
-# Pinned version for layer cache stability — bump manually when upgrading.
-ARG DOLT_VERSION=1.83.6
-RUN curl -fsSL "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/install.sh" | bash
-```
-
-**Placement rules**:
-- Place it after `apt-get install` (requires `curl`)
-- Place it **before** any `USER` directive that drops to a non-root user
-
-If the Dockerfile does not already have `curl` installed, ensure it is in the `apt-get install` list.
+If dolt and bd are both already installed, inform the user and skip to Step 7 for verification.
 
 ---
 
-## Step 3 — Install the `bd` CLI in the Dockerfile
+## Step 2 -- Update or create setup_devcontainer.sh
 
-> **Known bug (as of v0.61.0):** The upstream `install.sh` script fails when
-> run inside Docker on WSL. The `detect_platform()` function captures its own
-> stdout via command substitution, but the WSL-detection warning writes ANSI
-> color codes to stdout, corrupting the download URL. A fix has been submitted
-> upstream (redirecting warnings to stderr). **Until the fix is released, use
-> the direct binary download method below instead of piping `install.sh`.**
->
-> Before applying this workaround, check whether the bug has been fixed by
-> inspecting the install script's `detect_platform()` function — if the WSL
-> warning block already redirects output to `>&2`, the pipe method is safe.
+Add these install blocks to `.devcontainer/setup_devcontainer.sh`. Both tools install to `$HOME/.local/bin` as user-space tools.
 
-**Preferred method (direct binary download — works everywhere):**
+### Install blocks to add
 
-Pin the version using a build ARG for layer cache stability:
+```bash
+# Install dolt (database backend for beads) -- pinned, bump manually when upgrading
+mkdir -p "$HOME/.local/bin"
+DOLT_VERSION=1.83.6
+curl -fsSL "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/dolt-linux-amd64.tar.gz" -o /tmp/dolt.tar.gz \
+    && tar -xzf /tmp/dolt.tar.gz -C /tmp \
+    && cp /tmp/dolt-linux-amd64/bin/dolt "$HOME/.local/bin/" \
+    && rm -rf /tmp/dolt.tar.gz /tmp/dolt-linux-amd64
 
-```dockerfile
-# Install beads (bd) — distributed task graph tracker for AI agents
-# Note: piping install.sh fails in WSL/Docker because ANSI color codes from the
-# WSL-detection warning leak into the download URL. Download the binary directly.
-# Pinned version for layer cache stability — bump manually when upgrading.
-ARG BD_VERSION=0.61.0
-RUN curl -fsSL "https://github.com/steveyegge/beads/releases/download/v${BD_VERSION}/beads_${BD_VERSION}_linux_amd64.tar.gz" -o /tmp/beads.tar.gz \
-    && tar -xzf /tmp/beads.tar.gz -C /usr/local/bin bd \
-    && rm /tmp/beads.tar.gz \
-    && bd --version
+# Install beads (bd) -- pinned, bump manually when upgrading
+BD_VERSION=0.62.0
+curl -fsSL "https://github.com/steveyegge/beads/releases/download/v${BD_VERSION}/beads_${BD_VERSION}_linux_amd64.tar.gz" -o /tmp/beads.tar.gz \
+    && tar -xzf /tmp/beads.tar.gz -C "$HOME/.local/bin" bd \
+    && rm /tmp/beads.tar.gz
 ```
 
-**Alternative (once the upstream bug is fixed):**
+### If `setup_devcontainer.sh` exists
 
-```dockerfile
-# Install beads (bd) — graph-based issue tracker for AI agents
-RUN curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+Add the install blocks above to the existing script. Insert them before any final `cd` command or final `echo` statement at the end of the script. Ensure `mkdir -p "$HOME/.local/bin"` appears before both install blocks (it may already exist in the script).
+
+### If `setup_devcontainer.sh` does not exist
+
+Create `.devcontainer/setup_devcontainer.sh` with a complete script:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p "$HOME/.local/bin"
+export PATH="$HOME/.local/bin:$PATH"
+
+# Install dolt (database backend for beads) -- pinned, bump manually when upgrading
+DOLT_VERSION=1.83.6
+curl -fsSL "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/dolt-linux-amd64.tar.gz" -o /tmp/dolt.tar.gz \
+    && tar -xzf /tmp/dolt.tar.gz -C /tmp \
+    && cp /tmp/dolt-linux-amd64/bin/dolt "$HOME/.local/bin/" \
+    && rm -rf /tmp/dolt.tar.gz /tmp/dolt-linux-amd64
+
+# Install beads (bd) -- pinned, bump manually when upgrading
+BD_VERSION=0.62.0
+curl -fsSL "https://github.com/steveyegge/beads/releases/download/v${BD_VERSION}/beads_${BD_VERSION}_linux_amd64.tar.gz" -o /tmp/beads.tar.gz \
+    && tar -xzf /tmp/beads.tar.gz -C "$HOME/.local/bin" bd \
+    && rm /tmp/beads.tar.gz
+
+echo "setup_devcontainer.sh complete."
 ```
 
-When run as root, both methods install the `bd` binary to `/usr/local/bin`, which is already on PATH for all users.
+Make the script executable:
 
-**Placement rules**:
-- Place it after the dolt install (Step 2)
-- Place it **before** any `USER` directive that drops to a non-root user
-
-Do **not** use the npm or Go install alternatives in a Dockerfile — the curl/binary method is the simplest path with no runtime dependencies.
+```bash
+chmod +x .devcontainer/setup_devcontainer.sh
+```
 
 ---
 
-## Step 4 — Handle `.beads/` in `.gitignore`
+## Step 3 -- Ensure PATH in Dockerfile
 
-The `.beads/` directory contains the local task graph database, version-controlled internally by Dolt.
+Check the Dockerfile for this line:
 
-**Option A — Ignore it (default, recommended for most projects):**
+```dockerfile
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+```
+
+Replace `appuser` with the actual username if different (look for `ARG USERNAME` or `RUN useradd` in the Dockerfile).
+
+This line must appear in the devcontainer stage, **before** the `USER appuser` directive. If it is missing, add it.
+
+Without this `ENV` line, dolt and bd will only be available in interactive bash sessions (via `.bashrc`), not in non-interactive contexts like VS Code tasks, lifecycle commands, or Claude Code hooks.
+
+---
+
+## Step 4 -- Update devcontainer.json if needed
+
+Only update `devcontainer.json` if `postCreateCommand` does NOT already point to `setup_devcontainer.sh`. If it already does, the setup script update from Step 2 is sufficient -- no changes needed here.
+
+If there is no `postCreateCommand` at all, add it:
+
+```json
+"postCreateCommand": "/bin/bash /workspaces/PROJECT_NAME/.devcontainer/setup_devcontainer.sh"
+```
+
+Replace `PROJECT_NAME` with the actual project name (the workspace folder name).
+
+If `postCreateCommand` exists but points to a different script, either:
+- Add the dolt/bd install blocks to that existing script instead (go back to Step 2), or
+- Change it to point to `setup_devcontainer.sh` if appropriate
+
+---
+
+## Step 5 -- Handle .gitignore
+
+Ask the user: **"Do you want to commit the `.beads/` directory to git, or ignore it? Default is ignore."**
+
+**Option A -- Ignore (default, recommended):**
 
 Add to `.gitignore`:
 
@@ -107,71 +145,95 @@ Add to `.gitignore`:
 .beads/
 ```
 
-This is appropriate when using a Dolt remote for sync, to avoid double-tracking.
+This is appropriate when each developer has their own local task graph or when using a Dolt remote for sync.
 
-**Option B — Commit it (shared task graph):**
+**Option B -- Commit (shared task graph):**
 
-Do **not** add `.beads/` to `.gitignore`. This lets the team share a single task graph as a plain directory backup. Only choose this if the user explicitly asks for it.
+Do NOT add `.beads/` to `.gitignore`. Only choose this if the user explicitly requests it.
 
 Unless the user specifies otherwise, use Option A.
 
 ---
 
-## Step 5 — Rebuild the container
+## Step 6 -- Rebuild the container
 
-After saving all Dockerfile changes, rebuild the container:
+After saving all changes, tell the user to rebuild:
 
-- **VS Code**: `Ctrl+Shift+P` → "Dev Containers: Rebuild Container"
+- **VS Code**: `Ctrl+Shift+P` then "Dev Containers: Rebuild Container"
 - **CLI**: `devcontainer build --workspace-folder .`
-
-**BuildKit**: The Dockerfile must start with `# syntax=docker/dockerfile:1` if any layers use `--mount=type=cache`. If this header is missing, add it as the very first line.
 
 ---
 
-## Step 6 — Post-rebuild one-time setup
+## Step 7 -- Post-rebuild verification
 
-> **Tell the user to run the following commands manually in the container terminal after rebuilding. These are one-time setup steps, not container lifecycle commands.**
+After the container rebuilds, verify inside the container terminal:
 
 ```bash
-# 1. Initialize the beads task graph for this project (run once per project)
-bd init
+which bd       # Should be ~/.local/bin/bd
+which dolt     # Should be ~/.local/bin/dolt
+bd --version   # Should print beads version (e.g., 0.62.0)
+dolt version   # Should print dolt version (e.g., 1.83.6)
+```
 
-# 2. Install Claude Code hooks so bd prime runs on session start
+Both binaries must be in `~/.local/bin`, confirming they were installed by `setup_devcontainer.sh` as user-space tools (NOT in `/usr/local/bin`).
+
+---
+
+## Step 8 -- Post-setup: Initialize beads
+
+After rebuild, the user must run:
+
+```bash
+bd init
 bd setup claude --project
 ```
 
-Print this to the user clearly at the end of the skill:
+**What `bd init` does**: Creates the `.beads/` directory and initializes the Dolt database in the current project directory.
 
+**What `bd setup claude --project` does**: Adds hooks to `.claude/settings.local.json` so that beads context is loaded automatically at session start and before compaction:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ]
+  }
+}
 ```
-✅ Beads is installed in your devcontainer.
 
-After rebuilding, open a terminal in the container and run these two commands once:
-
-  bd init
-  bd setup claude --project
-
-That's it — beads will automatically inject task context at the start of every Claude Code session.
-```
-
-If using a Dolt remote for distributed sync:
-
-```bash
-bd dolt remote add origin <remote-url>
-```
+The `--project` flag scopes the hooks to the project's `settings.local.json` (not global settings). If `.claude/settings.local.json` already exists with other content, the hooks section is merged into it.
 
 ---
 
-## Verification
+## Step 9 -- First-use commands
 
-Inside the container terminal after running the one-time setup:
+Once beads is initialized and hooks are configured, the user can start working with the task graph:
 
 ```bash
-bd --version                  # Should print the beads version
-which bd                      # Should be /usr/local/bin/bd
-dolt version                  # Should print the dolt version
-bd setup claude --check       # Should confirm hooks are installed
-ls .beads/                    # Should show the database directory
-bd prime                      # Should print session context
+bd create "Short description of a task"    # Create a new issue
+bd ready                                    # Show issues ready to work on (all deps met)
+bd show <issue-id>                          # Show details of a specific issue
+bd prime                                    # Print full session context (used by hooks)
 ```
 
 ---
@@ -180,13 +242,15 @@ bd prime                      # Should print session context
 
 | Mistake | Fix |
 |---------|-----|
-| Installing `bd` after `USER` switch in Dockerfile | The binary download needs root to write to `/usr/local/bin`. Place the `RUN` line before any `USER` directive. |
-| Missing `curl` in Dockerfile | Ensure `curl` is in the `apt-get install` list before the dolt/beads install steps. |
-| Beads installed before dolt | Dolt must be installed first — beads depends on it at runtime for `bd dolt` commands. |
-| `install.sh` fails with "bad range in URL" on WSL/Docker | Upstream bug: ANSI codes leak into download URL. Use the direct binary download method in Step 3 until the fix is released. |
-| `bd init` run outside project directory | Always `cd /workspace` (or the correct project root) before running `bd init`. The `.beads/` dir is created in the current working directory. |
-| Using `bd setup claude` without `--project` | Without `--project`, hooks install globally. Use `--project` to keep hooks scoped to this project only. |
-| Committing `.beads/` unintentionally | Add `.beads/` to `.gitignore` unless the team explicitly wants a shared task graph. |
-| Floating versions in Dockerfile | Pin dolt and bd versions via `ARG` for reproducible, cache-friendly builds. Bump manually when upgrading. |
-| BuildKit cache mount fails | Add `# syntax=docker/dockerfile:1` as the first line of the Dockerfile to enable BuildKit syntax. |
-| `bd prime` not configured as a hook | Run `bd setup claude --project` after init — without the `SessionStart` hook, the agent has no beads context. |
+| Using upstream `install.sh` pipe in Docker | The upstream `curl ... install.sh \| bash` method has an ANSI escape code bug that corrupts the download URL in Docker/WSL. Always use the direct binary tarball download method shown in Step 2. |
+| Wrong GitHub repo for bd | The correct repo is `steveyegge/beads`, NOT `fission-codes/beads`. Current version is `0.62.0`. |
+| Installing dolt via `install.sh` to `/usr/local/bin` | Dolt must be installed via tarball to `~/.local/bin` as a user-space tool. Do NOT use the upstream dolt install script which installs to `/usr/local/bin`. |
+| Installing dolt or bd in the Dockerfile | Both are user-space tools installed by `setup_devcontainer.sh` to `~/.local/bin`. They do NOT belong in the Dockerfile. The Dockerfile only needs the `ENV PATH` line. |
+| Missing `ENV PATH` in Dockerfile | The Dockerfile must have `ENV PATH="/home/appuser/.local/bin:${PATH}"` so dolt and bd are on PATH in non-interactive shells. Without this, they work in terminal but fail in hooks and lifecycle commands. |
+| Asking about Bedrock vs Anthropic | Beads does not care about authentication method. That is a Claude Code concern, not a beads concern. Do NOT ask the user about auth. |
+| Running `bd init` inside the setup script | `bd init` must run AFTER the container is fully built and the user is in the project directory. It is an interactive post-setup step, not part of `setup_devcontainer.sh`. |
+| Using `bd setup claude` without `--project` | The `--project` flag scopes hooks to `.claude/settings.local.json`. Without it, hooks would be added globally. Always use `bd setup claude --project`. |
+| Hook files losing +x on rebuild | Hook scripts may lose execute permission on container rebuild. Run `bd hooks install` or `chmod +x` manually to restore permissions. |
+| Using `remoteUser` instead of `containerUser` | Use `"containerUser": "appuser"` in devcontainer.json, NOT `"remoteUser"`. |
+| Floating versions in setup script | Pin dolt and bd versions (`DOLT_VERSION=1.83.6`, `BD_VERSION=0.62.0`) for reproducible builds. Bump manually when upgrading. |
+| Committing `.beads/` unintentionally | Add `.beads/` to `.gitignore` unless the team explicitly wants a shared task graph committed to git. |

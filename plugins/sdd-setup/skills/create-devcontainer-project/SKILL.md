@@ -1,254 +1,258 @@
 ---
 name: create-devcontainer-project
-description: Scaffold a new project with a fully configured VS Code devcontainer, including Claude Code integration. Creates the project directory, Dockerfile, devcontainer.json, initialization scripts, language-specific tooling, and .gitignore. Use this whenever the user wants to start a new project, create a devcontainer, scaffold a project, or set up a development environment from scratch. Even if they just say "new project" or "start a project", this skill applies.
+description: Scaffold a new project with a fully configured VS Code devcontainer for AI-driven development. Creates the project directory, Dockerfile, devcontainer.json, two lifecycle scripts (initialize_devcontainer.sh on the host, setup_devcontainer.sh via postCreateCommand), language-specific tooling, and .gitignore. Supports Bedrock or Anthropic API auth, OpenSpec, Beads, and language-specific tooling as configurable options. Use this whenever the user wants to start a new project, create a devcontainer, scaffold a project, or set up a development environment from scratch. Even if they just say "new project" or "start a project", this skill applies.
 tools: Read, Edit, Write, Bash
 ---
 
 # Create a New Devcontainer Project
 
-This skill scaffolds a complete project with a VS Code devcontainer, Claude Code integration, and language-appropriate tooling. The target environment is WSL2 on Linux/Windows.
+This skill scaffolds a complete project with a VS Code devcontainer configured for AI-driven development. It runs on the **Docker host** (not inside a container) and generates THREE core files plus a Dockerfile:
 
-## Gather project details
+- `.devcontainer/devcontainer.json`
+- `.devcontainer/initialize_devcontainer.sh`
+- `.devcontainer/setup_devcontainer.sh`
+- `.devcontainer/Dockerfile`
 
-If the user hasn't provided these in their prompt, ask before proceeding:
-
-1. **Project name** — used for the directory, devcontainer name, and Claude config isolation
-2. **GPU support** — yes/no. Determines base Docker image (CUDA vs plain Ubuntu)
-3. **Primary language** — Python, C++, Node.js/TypeScript, Rust, Go, etc.
-
-Do not ask more than these three questions. Use sensible defaults for everything else.
+The generated project uses a **two-script lifecycle** pattern. Scripts are generated with project-specific values baked in (not parameterized with flags). Use the plugin's `templates/` directory (`templates/add_json_property.sh`, `templates/Dockerfile.base`) as starting-point references.
 
 ---
 
-## Project structure to generate
+## Step 1 -- Gather Project Details
 
-```
-<project-name>/
-├── .devcontainer/
-│   ├── devcontainer.json
-│   ├── Dockerfile
-│   └── initialize_devcontainer.sh
-├── .gitignore
-├── README.md
-├── scripts/
-│   └── setup-claude-code.sh
-└── <language-specific files>
-```
+Ask the user for these details. If they have already provided some, only ask for the missing ones.
+
+1. **Project name** -- Used for the directory, workspace mount path, and Claude config isolation (e.g., `my-ml-project`)
+2. **Bedrock or Anthropic?** -- AWS Bedrock (needs .aws mount, `CLAUDE_CODE_USE_BEDROCK=1`, VS Code settings) or Anthropic API key (simpler, just `ANTHROPIC_API_KEY`)
+3. **Include OpenSpec?** -- If yes, adds Node.js to Dockerfile and openspec install to setup_devcontainer.sh
+4. **Include Beads?** -- If yes, adds dolt + bd install to setup_devcontainer.sh
+5. **Primary language** -- Determines Dockerfile packages and VS Code extensions. If Python, adds uv to Dockerfile. If not Python, no uv.
+
+**Defaults** (use if the user does not specify):
+- Authentication: **Bedrock**
+- Include OpenSpec: **Yes**
+- Include Beads: **Yes**
+- Primary language: **Python**
 
 ---
 
-## Step 1 — Create the project directory
+## Step 2 -- Create Project Directory
 
 ```bash
-mkdir -p <project-name>/.devcontainer <project-name>/scripts
-cd <project-name>
+PROJECT="<project-name>"
+mkdir -p "${PROJECT}/.devcontainer"
+cd "${PROJECT}"
 git init
 ```
 
 ---
 
-## Step 2 — Generate the Dockerfile
+## Step 3 -- Generate Dockerfile
 
-### Base image
+The Dockerfile has a `base` stage (system packages only) and a `devcontainer` stage. Language-specific and tool-specific blocks are ONLY added when requested.
 
-- **GPU**: `nvidia/cuda:12.1.0-runtime-ubuntu22.04`
-- **No GPU**: `ubuntu:22.04`
-
-### BuildKit syntax header
-
-Always add this as the **first line** of the Dockerfile to enable BuildKit cache mounts:
+### Base stage (always included):
 
 ```dockerfile
-# syntax=docker/dockerfile:1
-```
+ARG APP_UID=1000
+ARG APP_GID=1000
 
-### Core packages (always install)
+FROM ubuntu:22.04 AS base
+ARG APP_UID
+ARG APP_GID
 
-Every devcontainer should include these regardless of language, because many tools and language servers install through them:
+ENV DEBIAN_FRONTEND=noninteractive
 
-```dockerfile
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       git curl ca-certificates sudo wget unzip \
-       python3 python3-pip python3-venv \
-       nodejs npm \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates sudo tar findutils jq less \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv (fast Python package manager, used by many tools)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Non-root user setup (handles existing UID gracefully)
+RUN groupadd -f -g $APP_GID appuser || true \
+    && if id -u $APP_UID >/dev/null 2>&1; then \
+        existing_user=$(id -un $APP_UID) && \
+        if [ "$existing_user" != "appuser" ]; then \
+            usermod -l appuser $existing_user && \
+            groupmod -n appuser $(id -gn $APP_UID) 2>/dev/null || true; \
+        fi; \
+    else \
+        useradd -m -u $APP_UID -g $APP_GID -s /bin/bash appuser; \
+    fi \
+    && echo "appuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/appuser \
+    && chmod 0440 /etc/sudoers.d/appuser
 
-# Install Claude Code CLI (pinned version for reproducible builds)
-RUN --mount=type=cache,target=/root/.npm \
-    npm install -g @anthropic-ai/claude-code@2.1.78
+WORKDIR /workspaces
+CMD ["/bin/bash"]
 ```
 
-### Language-specific additions
+### Devcontainer stage (always included):
 
-**Python** — no extra apt packages needed (python3 already in core). Add after core:
 ```dockerfile
-# Nothing extra — Python is in the base install
+FROM base AS devcontainer
+ARG APP_UID
+ARG APP_GID
 
-# Install Python dependencies with BuildKit pip cache
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt
+ENV PATH="/home/appuser/.local/bin:${PATH}"
 ```
 
-**C++** — add build tools:
+### If Python requested -- add to devcontainer stage (before USER):
+
 ```dockerfile
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       build-essential cmake gdb ninja-build pkg-config \
+RUN export UV_INSTALL_DIR=/usr/local/bin && curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### If OpenSpec requested -- add to devcontainer stage (before USER):
+
+```dockerfile
+ARG NODE_MAJOR=22
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-# Install vcpkg
-RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg \
-    && /opt/vcpkg/bootstrap-vcpkg.sh
-ENV VCPKG_ROOT=/opt/vcpkg
-ENV PATH="${VCPKG_ROOT}:${PATH}"
 ```
 
-**Node.js / TypeScript** — no extra apt packages needed (nodejs/npm already in core).
+### End of devcontainer stage (always last):
 
-**Rust** — add rustup:
 ```dockerfile
-# Rust installed as vscode user (see after USER line)
-```
-Then after `USER $USERNAME`:
-```dockerfile
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/home/vscode/.cargo/bin:${PATH}"
+USER appuser
 ```
 
-**Go** — add Go:
+### Language-specific system packages
+
+Add to the base stage `apt-get install` or as separate layers depending on language:
+
+**Python** -- add to the base stage `apt-get install` list:
 ```dockerfile
-RUN wget -q https://go.dev/dl/go1.22.0.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz \
-    && rm go1.22.0.linux-amd64.tar.gz
+    python3 \
+    python3-venv \
+    python3-pip \
+```
+
+**C++** -- add a separate layer in the base stage:
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake gdb ninja-build pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+**Go** -- add in the base stage:
+```dockerfile
+ARG GO_VERSION=1.22.0
+RUN wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
+    && tar -C /usr/local -xzf "go${GO_VERSION}.linux-amd64.tar.gz" \
+    && rm "go${GO_VERSION}.linux-amd64.tar.gz"
 ENV PATH="/usr/local/go/bin:${PATH}"
 ```
 
-### User setup (always)
-
+**Rust** -- add in the devcontainer stage AFTER `USER appuser`:
 ```dockerfile
-ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
-
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
-
-WORKDIR /workspace
-USER $USERNAME
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/home/appuser/.cargo/bin:${PATH}"
 ```
+
+**Node.js / TypeScript** -- uses the same NodeSource block as OpenSpec (add if not already present from OpenSpec).
 
 ---
 
-## Step 3 — Generate devcontainer.json
+## Step 4 -- Generate devcontainer.json
 
-Use this template, adjusting for GPU and language:
+### Bedrock auth version:
 
 ```json
 {
-  "name": "<project-name>",
-  "dockerFile": "Dockerfile",
-  "context": "..",
-  "workspaceFolder": "/workspace",
-  "containerUser": "vscode",
-  "remoteUser": "vscode",
+  "name": "PROJECT_NAME",
+  "build": {"context": "..", "dockerfile": "Dockerfile", "target": "devcontainer"},
+  "containerUser": "appuser",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/PROJECT_NAME,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/PROJECT_NAME",
   "initializeCommand": "bash ${localWorkspaceFolder}/.devcontainer/initialize_devcontainer.sh",
-  "mounts": [
-    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude-<project-name>/data,target=/home/vscode/.claude,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude-<project-name>/claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude/skills,target=/home/vscode/.claude/skills,type=bind,readonly,consistency=cached",
-    "source=${localEnv:HOME}/.claude/plugins,target=/home/vscode/.claude/plugins,type=bind,consistency=cached"
-  ],
+  "postCreateCommand": "/bin/bash /workspaces/PROJECT_NAME/.devcontainer/setup_devcontainer.sh",
   "remoteEnv": {
-    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
-    "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "AWS_REGION": "us-west-2",
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}"
   },
+  "mounts": [
+    "source=${localEnv:HOME}/.aws,target=/home/appuser/.aws,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude-PROJECT_NAME/data,target=/home/appuser/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude-PROJECT_NAME/claude.json,target=/home/appuser/.claude.json,type=bind"
+  ],
   "customizations": {
     "vscode": {
-      "extensions": [
-        "ms-vscode-remote.remote-containers",
-        "anthropic.claude-code"
-      ],
+      "extensions": ["anthropic.claude-code"],
       "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash",
-        "claudeCode.allowDangerouslySkipPermissions": true
+        "claude-code.apiProvider": "bedrock",
+        "claude-code.awsRegion": "us-west-2"
       }
     }
-  },
-  "onCreateCommand": "echo 'Container ready'",
-  "postCreateCommand": "<language-specific install command>"
+  }
 }
 ```
 
-> **Note on plugins mount**: The plugins mount must NOT be readonly — the marketplace system writes cached manifests into `plugins/marketplaces/`. Skills can remain readonly. If plugins are installed inside the container using `claude plugin install`, use `--scope user` so they resolve to `/home/vscode/.claude/plugins` (the bind-mounted path).
+### Anthropic API key version -- differences from Bedrock:
 
-### GPU projects
+- `remoteEnv`: Use `"ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"` instead of `CLAUDE_CODE_USE_BEDROCK` and `AWS_REGION`
+- `mounts`: No `.aws` mount (only the two Claude config mounts)
+- `customizations.vscode.settings`: Empty object `{}` (no `apiProvider` or `awsRegion`)
 
-Add `"runArgs": ["--gpus", "all"]` to devcontainer.json.
+### Language-specific VS Code extensions
 
-### Language-specific extensions and postCreateCommand
+Add to the `customizations.vscode.extensions` array as appropriate:
 
 **Python**:
-- Extensions: add `"ms-python.python"`, `"ms-toolsai.jupyter"`
-- postCreateCommand: `"python3 -m pip install -r /workspace/requirements.txt"`
+```json
+"ms-python.python",
+"ms-python.debugpy",
+"ms-python.vscode-pylance"
+```
 
 **C++**:
-- Extensions: add `"ms-vscode.cpptools"`, `"ms-vscode.cmake-tools"`
-- postCreateCommand: `"echo 'C++ project ready'"`
+```json
+"ms-vscode.cpptools",
+"ms-vscode.cmake-tools"
+```
 
 **Node.js / TypeScript**:
-- Extensions: add `"dbaeumer.vscode-eslint"`
-- postCreateCommand: `"cd /workspace && npm install"`
+```json
+"dbaeumer.vscode-eslint"
+```
 
 **Rust**:
-- Extensions: add `"rust-lang.rust-analyzer"`
-- postCreateCommand: `"echo 'Rust project ready'"`
+```json
+"rust-lang.rust-analyzer"
+```
 
 **Go**:
-- Extensions: add `"golang.go"`
-- postCreateCommand: `"echo 'Go project ready'"`
-
-### Beads integration (if project uses beads issue tracker)
-
-If beads (`bd`) is part of the project setup, **append the following to `postCreateCommand`**:
-
-```
-chmod +x .beads/hooks/* 2>/dev/null || true && bd hooks install 2>/dev/null || true
-```
-
-Example for a Python project with beads:
-
 ```json
-"postCreateCommand": "python3 -m pip install -r /workspace/requirements.txt && chmod +x .beads/hooks/* 2>/dev/null || true && bd hooks install 2>/dev/null || true"
+"golang.go"
 ```
 
-> **Why**: After a container rebuild, beads hook files lose their executable bit (they are written as `-rw-r--r--`). Without `chmod +x`, git silently skips them — meaning `prepare-commit-msg`, `post-checkout`, `pre-commit`, and other hooks never fire. `bd hooks install` sets `core.hooksPath` to `.beads/hooks/`, but that setting alone is not enough if the files are not executable. The `2>/dev/null || true` guards ensure the command is a no-op when `.beads/` does not exist yet.
+Replace `PROJECT_NAME` with the actual project name in all occurrences.
 
 ---
 
-## Step 4 — Generate initialize_devcontainer.sh
+## Step 5 -- Generate initialize_devcontainer.sh
 
-This runs on the **host** before the container builds. It creates the per-project Claude config directory so bind mounts succeed.
+This script runs on the **HOST** before the container builds via `initializeCommand`. It creates bind-mount source paths and pre-seeds claude.json so Docker bind mounts work on first build.
+
+Generate the script with `PROJECT_NAME` substituted throughout (the script is NOT parameterized -- the project name is baked in):
 
 ```bash
 #!/bin/bash
+# Initialize devcontainer environment before container build
+# Creates persistence directories for Claude Code config
+
 set -e
 
-PROJECT_NAME="<project-name>"
-CLAUDE_CONFIG_DIR="${HOME}/.claude-${PROJECT_NAME}"
-CLAUDE_DATA_DIR="${CLAUDE_CONFIG_DIR}/data"
-CLAUDE_JSON="${CLAUDE_CONFIG_DIR}/claude.json"
-CLAUDE_SETTINGS="${CLAUDE_DATA_DIR}/settings.json"
-
+# Function to add a JSON property to a file
 add_json_property() {
-    local file_path="$1" prop_name="$2" prop_value="$3"
-    grep -qs "\"$prop_name\"" "$file_path" && return
+    local file_path="$1"
+    local prop_name="$2"
+    local prop_value="$3"
+    if [[ ! "$prop_value" =~ ^(true|false|null|-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?|\".*\")$ ]]; then
+        prop_value="\"$prop_value\""
+    fi
+    if grep -qs "\"$prop_name\"" "$file_path"; then
+        return
+    fi
     if ! [ -s "$file_path" ] || grep -Eq '^[[:space:]]*\{[[:space:]]*\}[[:space:]]*$' "$file_path"; then
         printf '{\n  "%s": %s\n}\n' "$prop_name" "$prop_value" > "$file_path"
     else
@@ -257,68 +261,88 @@ add_json_property() {
     fi
 }
 
-mkdir -p "${CLAUDE_DATA_DIR}"
-[ -f "${CLAUDE_JSON}" ] || echo '{}' > "${CLAUDE_JSON}"
-add_json_property "${CLAUDE_JSON}" "hasCompletedOnboarding" "true"
+# Create Claude Code persistence directory
+mkdir -p "${HOME}/.claude-PROJECT_NAME/data"
 
-if [ ! -f "${CLAUDE_SETTINGS}" ]; then
-    cat > "${CLAUDE_SETTINGS}" << 'EOF'
-{
-  "permissions": {
-    "defaultMode": "bypassPermissions"
-  }
-}
-EOF
+# Ensure claude.json exists (Docker bind mount requires source file to pre-exist)
+CLAUDE_JSON="${HOME}/.claude-PROJECT_NAME/claude.json"
+if [ ! -f "$CLAUDE_JSON" ]; then
+    echo "{}" > "$CLAUDE_JSON"
 fi
 
-echo "Claude Code config for ${PROJECT_NAME} verified at ${CLAUDE_CONFIG_DIR}/"
+add_json_property "$CLAUDE_JSON" "initialPermissionMode" "bypassPermissions"
 ```
 
-Make it executable: `chmod +x .devcontainer/initialize_devcontainer.sh`
+The `add_json_property` helper is sourced from the plugin's `templates/add_json_property.sh` as a starting point. It is inlined into the generated script so the project has no runtime dependency on the plugin.
 
 ---
 
-## Step 5 — Generate language-specific files
+## Step 6 -- Generate setup_devcontainer.sh
 
-**Python**:
-- `requirements.txt` (empty file)
-- `setup.sh`:
-  ```bash
-  #!/usr/bin/env bash
-  set -e
-  python3 -m venv .venv
-  source .venv/bin/activate
-  pip install --upgrade pip
-  pip install -r requirements.txt
-  echo "Setup complete. Activate with: source .venv/bin/activate"
-  ```
-  `chmod +x setup.sh`
+This script runs **INSIDE the container** via `postCreateCommand`. It installs ONLY the tools the user requested. The script is NOT parameterized with flags -- instead, generate a script with exactly the blocks needed based on user choices.
 
-**C++**:
-- `CMakeLists.txt`:
-  ```cmake
-  cmake_minimum_required(VERSION 3.20)
-  project(<project-name> LANGUAGES CXX)
-  set(CMAKE_CXX_STANDARD 17)
-  ```
-- `src/main.cpp` (minimal hello world)
+### Always included (start of script + Claude Code):
 
-**Node.js / TypeScript**:
-- Run `npm init -y` in the project directory
-- If TypeScript: also `npm install --save-dev typescript @types/node` and create `tsconfig.json`
+```bash
+#!/bin/bash
+# setup_devcontainer.sh: Post-create command for devcontainer
+# See: devcontainer.json 'postCreateCommand'
+echo "Running [setup_devcontainer.sh]..."
+startDir="$(pwd)"
 
-**Rust**:
-- Run `cargo init` in the project directory (after container is built, or create `Cargo.toml` + `src/main.rs` manually)
+# Install Claude Code CLI
+curl -fsSL https://claude.ai/install.sh | bash || echo 'WARNING: Claude Code install failed - continuing'
+```
 
-**Go**:
-- Run `go mod init <project-name>` or create `go.mod` manually
-- Create `main.go` (minimal hello world)
+### If OpenSpec requested -- add this block:
+
+```bash
+# Configure npm to install global packages in user-writable directory
+# This avoids EACCES errors when running as non-root (appuser)
+mkdir -p "$HOME/.npm-global"
+npm config set prefix "$HOME/.npm-global"
+export PATH="$HOME/.npm-global/bin:$PATH"
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
+
+# Install OpenSpec
+npm install -g @fission-ai/openspec@1.2.0
+```
+
+### If Beads requested -- add this block:
+
+```bash
+# Install dolt (database backend for beads) — pinned, bump manually when upgrading
+mkdir -p "$HOME/.local/bin"
+DOLT_VERSION=1.83.6
+curl -fsSL "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/dolt-linux-amd64.tar.gz" -o /tmp/dolt.tar.gz \
+    && tar -xzf /tmp/dolt.tar.gz -C /tmp \
+    && cp /tmp/dolt-linux-amd64/bin/dolt "$HOME/.local/bin/" \
+    && rm -rf /tmp/dolt.tar.gz /tmp/dolt-linux-amd64
+
+# Install beads (bd) — pinned, bump manually when upgrading
+BD_VERSION=0.62.0
+curl -fsSL "https://github.com/steveyegge/beads/releases/download/v${BD_VERSION}/beads_${BD_VERSION}_linux_amd64.tar.gz" -o /tmp/beads.tar.gz \
+    && tar -xzf /tmp/beads.tar.gz -C "$HOME/.local/bin" bd \
+    && rm /tmp/beads.tar.gz
+```
+
+### Always included (end of script):
+
+```bash
+# Return to starting directory
+cd "${startDir}"
+echo "Finished [setup_devcontainer.sh], returned to directory: $(pwd)"
+```
 
 ---
 
-## Step 6 — Generate .gitignore
+## Step 7 -- Generate Supporting Files
 
-Keep it minimal but appropriate for the language.
+### .gitignore
+
+Combine language-specific patterns with AI development additions. Read the plugin's `templates/gitignore-additions.txt` for the AI-specific block.
+
+Start with language-specific patterns:
 
 **Python**:
 ```
@@ -328,7 +352,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-.env
 ```
 
 **C++**:
@@ -339,85 +362,172 @@ build/
 *.a
 .cache/
 compile_commands.json
-.env
 ```
 
 **Node.js / TypeScript**:
 ```
 node_modules/
 dist/
-.env
 ```
 
 **Rust**:
 ```
 target/
-.env
 ```
 
 **Go**:
 ```
 bin/
+```
+
+Then append the AI development additions block:
+```
+# === AI-Driven Development ===
+
+# Claude Code
+.claude/settings.local.json
+.claude/.credentials.json
+
+# Beads (local database)
+# .beads/
+
+# OpenSpec (generated artifacts)
+# openspec-output/
+
+# Python (uv)
+.venv/
+__pycache__/
+*.pyc
+.python-version
+
+# Node
+node_modules/
+
+# IDE
+.vscode/.ropeproject
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
 .env
+.env.*
+
+# Docker
+.dockerignore.local
 ```
 
----
+If Beads is included, uncomment the `.beads/` line.
 
-## Step 7 — Generate .dockerignore
-
-Create a `.dockerignore` file at the project root to keep the Docker build context lean:
+### .dockerignore
 
 ```
+.git/
 .venv/
 __pycache__/
 *.pyc
 node_modules/
 dist/
 build/
+target/
 .env
+.env.*
+.beads/
 ```
 
-This prevents large directories and secrets from being sent to the Docker daemon during builds.
+### CLAUDE.md
 
----
-
-## Step 8 — Generate README.md
-
-Keep it minimal:
+Create a minimal project-level instructions file:
 
 ```markdown
 # <project-name>
 
-<one-line description if the user provided project goals, otherwise just the name>
+## Development Environment
 
-## Development
+This project uses a VS Code devcontainer for development. Open in VS Code and select "Reopen in Container".
 
-This project uses a VS Code devcontainer. Open in VS Code and select "Reopen in Container".
+## Tools Available
 
-### Prerequisites
-- Docker
-- VS Code with Remote Containers extension
-- `ANTHROPIC_API_KEY` set in your environment (or authenticate via `claude` CLI on first run)
+- Claude Code CLI (`claude`)
 ```
+
+If Python, add: `- uv (Python package manager)`
+If Beads is included, add: `- Beads (`bd`) -- graph-based issue tracker`
+If OpenSpec is included, add: `- OpenSpec (`openspec`) -- specification management`
+
+### Language-specific files
+
+**Python**:
+- `pyproject.toml`:
+  ```toml
+  [project]
+  name = "<project-name>"
+  version = "0.1.0"
+  requires-python = ">=3.10"
+  dependencies = []
+  ```
+
+**C++**:
+- `CMakeLists.txt`:
+  ```cmake
+  cmake_minimum_required(VERSION 3.20)
+  project(<project-name> LANGUAGES CXX)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+  ```
+- `src/main.cpp`:
+  ```cpp
+  #include <iostream>
+  int main() {
+      std::cout << "Hello from <project-name>" << std::endl;
+      return 0;
+  }
+  ```
+
+**Node.js / TypeScript**:
+- Run `npm init -y` in the project directory
+- If TypeScript, create `tsconfig.json`:
+  ```json
+  {
+    "compilerOptions": {
+      "target": "ES2022",
+      "module": "node16",
+      "moduleResolution": "node16",
+      "outDir": "./dist",
+      "rootDir": "./src",
+      "strict": true,
+      "esModuleInterop": true
+    },
+    "include": ["src/**/*"]
+  }
+  ```
+
+**Rust**:
+- Create `Cargo.toml` and `src/main.rs` manually (cargo is not available on the host)
+
+**Go**:
+- `go.mod`:
+  ```
+  module <project-name>
+
+  go 1.22
+  ```
+- `main.go`:
+  ```go
+  package main
+
+  import "fmt"
+
+  func main() {
+      fmt.Println("Hello from <project-name>")
+  }
+  ```
 
 ---
 
-## Step 9 — Generate scripts/setup-claude-code.sh
-
-Same as the initialize script but standalone with verbose output:
-
-```bash
-#!/bin/bash
-set -e
-PROJECT_NAME="${1:-<project-name>}"
-# ... (same logic as initialize_devcontainer.sh with echo status messages)
-```
-
-`chmod +x scripts/setup-claude-code.sh`
-
----
-
-## Step 10 — Final setup
+## Step 8 -- Git Init and Commit
 
 ```bash
 cd <project-name>
@@ -425,8 +535,66 @@ git add -A
 git commit -m "Initial project scaffold with devcontainer and Claude Code integration"
 ```
 
+---
+
+## Step 9 -- Next Steps
+
 Tell the user:
-1. Open the project folder in VS Code
-2. Select "Reopen in Container" when prompted
-3. Claude Code CLI will authenticate on first run — credentials persist after that
-4. The Claude Code extension should appear in the sidebar
+
+```
+Project "<project-name>" is ready.
+
+To start development:
+
+1. Open the project folder in VS Code:
+   code <project-name>
+
+2. When prompted, select "Reopen in Container"
+   (or Ctrl+Shift+P -> "Dev Containers: Reopen in Container")
+
+3. Wait for the container to build and set up. The lifecycle scripts will:
+   - Create Claude config directories on your host (initialize_devcontainer.sh)
+   - Install tools inside the container (setup_devcontainer.sh)
+
+4. Claude Code will be available in the VS Code sidebar and terminal.
+```
+
+If Beads was included:
+```
+Beads is installed. After the container starts, run in the terminal:
+  bd init
+  bd setup claude --project
+```
+
+If OpenSpec was included:
+```
+OpenSpec is installed. Initialize a spec with:
+  openspec init
+```
+
+---
+
+## Common Pitfalls
+
+| Mistake | Fix |
+|---------|-----|
+| Extension ID `anthropics.claude-code` (with 's') | Correct ID is `anthropic.claude-code` (no 's') |
+| Installing Claude Code via npm | Use `curl -fsSL https://claude.ai/install.sh \| bash` in setup_devcontainer.sh |
+| Node.js added when not needed | Node.js is ONLY added to the Dockerfile when OpenSpec is requested |
+| uv added when not Python | uv is ONLY added to the Dockerfile when Python is the primary language |
+| Dolt installed via `install.sh` | Use direct tarball download to `~/.local/bin` in setup_devcontainer.sh, NOT via `install.sh` |
+| Beads `install.sh` in Docker | Known ANSI escape code bug in `detect_platform()`. Use direct binary download: `curl ... beads_0.62.0_linux_amd64.tar.gz` |
+| BD_VERSION or beads URL wrong | BD_VERSION is `0.62.0`, GitHub URL is `steveyegge/beads` (not `fission-codes/beads`) |
+| `initialPermissionMode` in settings.json | Set `initialPermissionMode` in `claude.json` via `add_json_property`, NOT in `settings.json` |
+| Docker bind mount fails on first build | `initialize_devcontainer.sh` MUST create all host-side source paths before container builds. Docker bind mounts FAIL if source file/directory does not exist. |
+| Using `remoteUser` instead of `containerUser` | Use `"containerUser": "appuser"`, not `"remoteUser": "vscode"` |
+| Bedrock auth missing VS Code settings | Bedrock needs BOTH the `.aws` bind mount AND `claude-code.apiProvider`/`claude-code.awsRegion` in VS Code settings |
+| Anthropic auth with Bedrock settings | Anthropic API key auth only needs `ANTHROPIC_API_KEY` in `remoteEnv` -- no `.aws` mount, no VS Code provider settings |
+| Named volume for config (`type=volume`) | Use `type=bind`. Named volumes start empty and don't sync with host. |
+| Shared `~/.claude` across projects | Use `~/.claude-<project>/data` per project for isolation |
+| `claude` not found in PATH | Set `ENV PATH="/home/appuser/.local/bin:${PATH}"` in the Dockerfile, NOT in `remoteEnv` |
+| Workspace path uses `/workspace/` (singular) | Use `/workspaces/<project-name>` (plural: `/workspaces/`) |
+| OpenSpec npm install fails as non-root | Use the npm global prefix trick: `mkdir -p ~/.npm-global && npm config set prefix ~/.npm-global` then add `~/.npm-global/bin` to PATH |
+| Distro nodejs too old for OpenSpec | Use NodeSource `setup_22.x`, not `apt-get install nodejs` which gives v12 on Ubuntu 22.04 |
+| Setup script parameterized with flags | Do NOT use `--flags`. Generate setup_devcontainer.sh with exactly the blocks needed -- no flag parsing |
+| Three scripts with post-start.sh | There is NO post-start.sh. Use only two scripts: initialize_devcontainer.sh (host) and setup_devcontainer.sh (postCreateCommand) |

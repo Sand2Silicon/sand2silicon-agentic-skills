@@ -1,0 +1,52 @@
+// Template: devcontainer.json for AI-Driven Development
+// Replace {{PLACEHOLDERS}} with project-specific values.
+// Remove sections marked OPTIONAL if not needed.
+// Skills generate this file with only the sections the user requested.
+{
+  "name": "{{PROJECT_NAME}}",
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile",
+    "target": "devcontainer"
+  },
+  "containerUser": "{{USERNAME}}",
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/{{PROJECT_NAME}},type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/{{PROJECT_NAME}}",
+
+  "initializeCommand": "bash ${localWorkspaceFolder}/.devcontainer/initialize_devcontainer.sh",
+  "postCreateCommand": "/bin/bash /workspaces/{{PROJECT_NAME}}/.devcontainer/setup_devcontainer.sh",
+
+  "remoteEnv": {
+    // === Bedrock auth (if chosen): ===
+    // "CLAUDE_CODE_USE_BEDROCK": "1",
+    // "AWS_REGION": "us-west-2",
+
+    // === Anthropic API key auth (if chosen): ===
+    // "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}"
+  },
+
+  "mounts": [
+    // Claude Code per-project config
+    "source=${localEnv:HOME}/.claude-{{PROJECT_NAME}}/data,target=/home/{{USERNAME}}/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude-{{PROJECT_NAME}}/claude.json,target=/home/{{USERNAME}}/.claude.json,type=bind"
+
+    // === Bedrock auth (if chosen): ===
+    // ,"source=${localEnv:HOME}/.aws,target=/home/{{USERNAME}}/.aws,type=bind,readonly"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        // === Bedrock auth (if chosen): ===
+        // "claude-code.apiProvider": "bedrock",
+        // "claude-code.awsRegion": "us-west-2"
+      }
+    }
+  }
+}

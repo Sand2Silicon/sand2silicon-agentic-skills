@@ -1,0 +1,90 @@
+# syntax=docker/dockerfile:1
+# ============================================================================
+# Base Devcontainer Dockerfile — Minimal Starting Point
+# ============================================================================
+# This template provides the MINIMUM for a devcontainer. It installs only
+# core system packages and creates a non-root user. Language runtimes, package
+# managers, and tools are added by the skills based on what the user requests:
+#
+#   Python  → uv (system-wide via UV_INSTALL_DIR)
+#   OpenSpec → Node.js LTS via NodeSource
+#   Claude/Beads/OpenSpec → installed by setup_devcontainer.sh (postCreateCommand)
+#
+# Adapt the package-install block for your base image (apt vs yum).
+# ============================================================================
+
+# CONFIGURE: Choose base image
+#   apt-based:  ubuntu:22.04, nvidia/cuda:12.1.0-runtime-ubuntu22.04
+#   yum-based:  amazonlinux:2023
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE} AS base
+
+# ============================================================================
+# Core system packages (apt-based example)
+# ============================================================================
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    sudo \
+    tar \
+    findutils \
+    jq \
+    less \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- yum-based alternative (Amazon Linux, RHEL): ---
+# RUN yum install -y git curl vim tar findutils jq \
+#     && yum clean all && rm -rf /var/cache/yum /tmp/*
+
+# ============================================================================
+# Non-root user setup
+# ============================================================================
+ARG USERNAME=appuser
+ARG USER_UID=1000
+ARG USER_GID=${USER_UID}
+
+RUN groupadd -f -g ${USER_GID} ${USERNAME} || true \
+    && if id -u ${USER_UID} >/dev/null 2>&1; then \
+        existing_user=$(id -un ${USER_UID}) && \
+        if [ "$existing_user" != "${USERNAME}" ]; then \
+            usermod -l ${USERNAME} $existing_user && \
+            groupmod -n ${USERNAME} $(id -gn ${USER_UID}) 2>/dev/null || true; \
+        fi; \
+    else \
+        useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/bash ${USERNAME}; \
+    fi \
+    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
+    && chmod 0440 /etc/sudoers.d/${USERNAME}
+
+# Ensure ~/.local/bin is on PATH (Claude Code CLI installs here via postCreateCommand)
+ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
+
+WORKDIR /workspaces
+CMD ["/bin/bash"]
+
+# ============================================================================
+# Devcontainer stage
+# ============================================================================
+# Skips adding code/models — those are bind-mounted.
+# Stage name MUST be lowercase (devcontainer spec requirement).
+FROM base AS devcontainer
+ARG USERNAME=appuser
+
+# === OPTIONAL BLOCKS — added by skills based on user choices ===
+#
+# Python (uv):
+#   RUN export UV_INSTALL_DIR=/usr/local/bin && curl -LsSf https://astral.sh/uv/install.sh | sh
+#
+# OpenSpec (requires Node.js — apt-based):
+#   ARG NODE_MAJOR=22
+#   RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+#       && apt-get install -y --no-install-recommends nodejs \
+#       && rm -rf /var/lib/apt/lists/*
+#
+# OpenSpec (requires Node.js — yum-based):
+#   RUN curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - \
+#       && yum install -y nodejs && yum clean all
+
+USER ${USERNAME}
