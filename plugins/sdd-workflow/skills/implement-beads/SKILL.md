@@ -16,13 +16,13 @@ Drive implementation of Beads-tracked work. Beads is the execution engine; OpenS
 
 ## Orchestration Model — READ FIRST
 
-**You are the orchestrator, not a worker.** Your job: plan waves, dispatch child agents, track bead state, manage flow. You do not write code, tests, or reviews — you delegate all of that.
+**You are the orchestrator, not a worker.** Your job: plan waves, dispatch child agents, track bead state, manage flow. You do not write code, author test suites, or write reviews — you delegate all of that.
 
 **Hard rules:**
 1. **Parallelize aggressively.** Before each wave, identify ALL independent beads and dispatch them simultaneously. Sequential only for true data dependencies.
-2. **Use child agents for all work.** Each bead is handled by a dispatched agent — implementation, test-writing, or review.
-3. **Every non-trivial feature follows the impl/test/review triad.** Impl and test agents run concurrently and independently. Review runs after both complete.
-4. **Tests come from specs and acceptance criteria, not implementation code.** Test agents must never read the implementation.
+2. **Use child agents for all work.** Each bead is handled by a dispatched agent — implementation, test-authoring, or review.
+3. **Every non-trivial feature follows the impl/test/review triad.** Impl and test-writer agents run concurrently and independently. Review runs after both complete.
+4. **Test suites are authored from specs and acceptance criteria, not implementation code.** Test-writer agents must never read the implementation.
 5. **Review agents file gaps as new beads** routed back to impl/test agents. Never skip review gates.
 6. **All work is tracked in Beads.** Claim before starting, close on completion, verify every closure.
 
@@ -45,7 +45,7 @@ Store these for all subagent prompts:
 | Setting | Detect from | Fallback |
 |---------|------------|----------|
 | Package install | `pyproject.toml` with `[tool.uv]` → `uv sync`; `package.json` → `npm install` | `pip install -r requirements.txt` |
-| Test command | CLAUDE.md or `pytest.ini` / `pyproject.toml [tool.pytest]` | `python3 -m pytest tests/ -v` |
+| Test execution command | CLAUDE.md or `pytest.ini` / `pyproject.toml [tool.pytest]` | `python3 -m pytest tests/ -v` |
 | Lint command | CLAUDE.md or lint tool in deps | Skip if not found |
 | Type check | CLAUDE.md or `mypy`/`pyright` in deps | Skip if not found |
 | Source root | Top-level package dir (`app/`, `src/`, project name) | `.` |
@@ -84,7 +84,18 @@ ls roadmap.md docs/roadmap.md 2>/dev/null            # Roadmap?
 
 Also scan ready beads for `Reference:` lines pointing to external codebases — note org/repo pairs for subagent prompts.
 
-### 0d. Ask workflow mode
+### 0d. Detect test folder conventions
+
+Scan open and ready bead descriptions for `Test location:` or `Target:` fields that specify where tests should be written:
+
+```bash
+bd list --status=open 2>/dev/null | head -20
+bd ready 2>/dev/null | head -5
+```
+
+If bead descriptions contain conventions like `Test location: tests/unit/` or `Target: tests/test_ported/`, note them for test-writer-agent prompts. If multiple folders are specified (e.g., `tests/test_ported/` for adapted reference tests, `tests/unit/` for spec-derived tests), list all. Default to the project's standard test directory if no conventions are specified.
+
+### 0e. Ask workflow mode
 
 > **Workflow options:**
 > 1. **Worktree** (recommended for large changes) — isolated feature branch via `bd worktree create`
@@ -170,12 +181,14 @@ bd show <epic-id>                # Full dependency tree
 
 Show the user:
 - Total / closed / remaining beads
-- Which are unblocked now (grouped by type: impl, test, review)
+- Which are unblocked now (grouped by type: impl, test-authoring, review)
 - Any in-progress beads (resume these first)
 
 ---
 
 ## Step 4: Implement — parallel waves
+
+Steps 4 and 5 overlap in time. As soon as a feature's impl+test beads close, its review bead unblocks and Step 5 review agents launch — while the next wave of implementation is already running. Step 6 (build/validate) is the only strictly sequential gate: it runs once, after every bead in both steps is closed.
 
 ### 4a. Plan waves
 
@@ -186,28 +199,28 @@ bd ready                         # All currently unblocked
 bd show <epic-id>                # Dependency tree
 ```
 
-Group beads into waves — beads with no mutual dependencies go in the same wave. Within each wave, identify impl/test pairs for simultaneous dispatch.
+Group beads into waves — beads with no mutual dependencies go in the same wave. Within each wave, identify impl/test-authoring pairs for simultaneous dispatch.
 
 ### 4b. Dispatch agents
 
-**Default mode is parallel dispatch.** When N beads are unblocked and independent, dispatch N agents simultaneously.
+**Default mode is parallel dispatch.** When N impl/test-authoring bead pairs are unblocked and independent, dispatch all N pairs simultaneously.
 
 ```
 Wave 1 (all dispatched in parallel):
-  -> Agent (impl):   workspace-5ka  — add cache layer
-  -> Agent (test):   workspace-5kt  — tests for cache layer (from spec)
-  -> Agent (impl):   workspace-olb  — scaffold API module
-  -> Agent (test):   workspace-olt  — tests for API module (from spec)
+  -> Agent (impl):        workspace-5ka  — add cache layer
+  -> Agent (test-writer): workspace-5kt  — author tests for cache layer (from spec)
+  -> Agent (impl):        workspace-olb  — scaffold API module
+  -> Agent (test-writer): workspace-olt  — author tests for API module (from spec)
 [wait for all to complete]
 
-Wave 1 reviews (review beads unblock after impl+test close):
+Wave 1 reviews (review beads unblock after impl+test-authoring close):
   -> Agent (review): workspace-5kr  — review cache layer
   -> Agent (review): workspace-olr  — review API module
 [wait; handle gap beads if filed]
 
 Wave 2 (unblocked after Wave 1 reviews close):
-  -> Agent (impl):   workspace-7mn  — integrate cache + API
-  -> Agent (test):   workspace-7mt  — integration tests
+  -> Agent (impl):        workspace-7mn  — integrate cache + API
+  -> Agent (test-writer): workspace-7mt  — author integration tests
 ```
 
 After each wave completes, run `bd ready` to identify the next wave and dispatch immediately.
@@ -221,7 +234,7 @@ The `Agent:` field in each bead's description determines which agent type handle
 1. `bd show <id>` — read the issue; note `OpenSpec:`, `Spec:`, `Design:`, `Accept:` refs
 2. `bd update <id> --claim`
 3. Read the spec/acceptance criteria for this task before coding
-4. **If bead has `Reference:` lines** — fetch source from the external repo via GitHub MCP (`mcp__github__get_file_contents`). Adapt to fit the target project; do not copy blindly. Note any reference tests for the test agent.
+4. **If bead has `Reference:` lines** — fetch source from the external repo via GitHub MCP (`mcp__github__get_file_contents`). Adapt to fit the target project; do not copy blindly. Note any reference test files for the test-writer agent.
 5. Implement. Keep changes minimal and scoped. Follow `design.md` decisions — flag deviations, don't silently override.
 6. `bd close <id>` — **verify output contains `Closed`**. If not, diagnose before continuing.
 
@@ -230,17 +243,17 @@ The `Agent:` field in each bead's description determines which agent type handle
 1. `bd show <id>` — read spec/acceptance refs
 2. `bd update <id> --claim`
 3. Read the spec and acceptance criteria. **If JIRA active**, also check JIRA ticket criteria — these are ground truth.
-4. **Write tests from specs and acceptance criteria ONLY — never from implementation code.** Tests define the contract and should be valid before the implementation exists.
-5. **If bead has `Reference:` lines pointing to tests** — fetch and adapt into a `ported` test suite (e.g., `tests/ported/test_<feature>.py`). Label clearly. These complement spec-derived tests.
+4. **Author tests from specs and acceptance criteria ONLY — never from implementation code.** Test suites define the contract and should be valid before the implementation exists.
+5. **If bead has `Reference:` lines pointing to existing test files** — fetch and adapt into a `ported` test suite (e.g., `tests/ported/test_<feature>.py`). Label clearly. These complement spec-derived tests.
 6. `bd close <id>` — verify `Closed`
 
 #### Review agent (`Agent: review-agent`)
 
 1. `bd show <id>` — read review scope and acceptance criteria
 2. `bd update <id> --claim`
-3. **Independently** read implementation code and test code — do not rely on other agents' summaries
-4. **Run the tests** against the implementation using the detected test command
-5. Verify each acceptance scenario is satisfied by the code AND covered by tests
+3. **Independently** read implementation code and the authored test suite — do not rely on other agents' summaries
+4. **Execute the test suite** against the implementation using the detected test execution command
+5. Verify each acceptance scenario is satisfied by the code AND covered by test cases
 6. Invoke `/simplify` on changed files for quality/efficiency check
 7. **If gaps found:** create a new bead for each gap:
    ```bash
@@ -272,10 +285,11 @@ Include this context in every subagent dispatch:
 ```
 Bead: <id> — <title>
 Role: implementation-agent | test-writer-agent | review-agent
-Project: test=<cmd>, lint=<cmd>, install=<cmd>, source_root=<path>
+Project: test-run=<cmd>, lint=<cmd>, install=<cmd>, source_root=<path>
 <if JIRA active>  JIRA: <ticket-key> — acceptance criteria cached from MCP
 <if reference repos>  Reference: use mcp__github__get_file_contents owner="<org>" repo="<repo>"
-<if test-writer>  Write tests from spec/acceptance criteria ONLY — do not read implementation code.
+<if test folder conventions>  Test file locations: <list from Step 0d>
+<if test-writer>  Author tests from spec/acceptance criteria ONLY — do not read implementation code.
 <if review-agent>  File gap beads for issues found — do not fix them. Only close when all criteria verified.
 
 Steps: bd show <id> -> bd update <id> --claim -> [do work] -> bd close <id> (verify Closed)
@@ -293,7 +307,7 @@ Steps: bd show <id> -> bd update <id> --claim -> [do work] -> bd close <id> (ver
 
 ## Step 5: Build/smoke gate
 
-**Runs ONLY after ALL implementation, test, and review beads are closed.** Never mid-implementation — partial code causes spurious failures.
+**Runs ONLY after ALL implementation, test-authoring, and review beads are closed.** Never mid-implementation — partial code causes spurious failures.
 
 ```bash
 # Confirm readiness
@@ -305,7 +319,7 @@ Run validation using the commands detected in Step 0:
 ```bash
 <package_install>                                    # Install/sync deps
 <entry_point>                                        # Run entry point (if detected)
-<test_command> --cov=<source_root>                   # Full test suite + coverage
+<test_execution_command> --cov=<source_root>          # Execute full test suite + coverage
 <lint_command>                                        # Lint (if configured)
 <type_check_command>                                  # Type check (if configured)
 ```
@@ -328,8 +342,8 @@ test -s scripts/sync-openspec-tasks.py && python3 scripts/sync-openspec-tasks.py
 # /spec-completion-auditor <change-name>
 # If gaps reported → STOP until resolved.
 
-# 4. Final test run
-<test_command>
+# 4. Final test suite execution
+<test_execution_command>
 ```
 
 **If beads remain in_progress:** list them, explain why, ask the user: (a) complete now, (b) defer with `bd update <id> --status=open`, or (c) proceed with explicit approval. Do NOT silently proceed.
@@ -391,9 +405,9 @@ Context: <OpenSpec | JIRA PROJ-123 | Roadmap Phase 2 | Beads only>
 
 **After each wave:**
 ```
-Wave 1 impl+test complete (N beads closed):
-  V <id> (impl) — <title>
-  V <id> (test) — <title>
+Wave 1 impl+test-authoring complete (N beads closed):
+  V <id> (impl)        — <title>
+  V <id> (test-writer) — <title>
   Verification: 0 in_progress | N review beads unblocked -> dispatching reviews
 
 Wave 1 reviews (N closed):
@@ -417,7 +431,7 @@ Next: <suggested action>
 
 - **You are the orchestrator** — delegate all implementation, testing, and review to child agents
 - **Parallelize by default** — `bd ready` for independent beads, dispatch concurrently; sequential only for true data dependencies
-- **Test agents work from specs, not implementation** — dispatch in parallel with (not after) implementation agents
+- **Test-writer agents work from specs, not implementation** — dispatch in parallel with (not after) implementation agents
 - **Every feature goes through review** — a separate review-agent verifies, files gap beads, and iterates
 - **Build gate runs ONLY after all beads close** — never mid-implementation
 - **Never suppress `bd close` output** — always verify the `Closed` confirmation
@@ -430,4 +444,4 @@ Next: <suggested action>
 
 ARGUMENTS: $ARGUMENTS
 - Follow `design.md` decisions — flag deviations, don't silently override
-- Build/smoke gates require actually running the code, not claiming they passed
+- Build/validate gate requires actually running the code, not claiming it passed
