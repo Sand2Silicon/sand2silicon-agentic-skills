@@ -13,14 +13,14 @@
       "name": "sdd-setup",
       "source": "./plugins/sdd-setup",
       "description": "Skills and a builder agent for scaffolding AI-driven development containers: create projects, add Claude Code, Beads, and OpenSpec. Skills generate project-specific Dockerfiles, devcontainer.json, and lifecycle scripts.",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "category": "development"
     },
     {
       "name": "sdd-workflow",
       "source": "./plugins/sdd-workflow",
       "description": "Full lifecycle spec-driven development for AI agents: interactive planning, JIRA integration, bead graph generation, parallel implementation with review gates, and spec completion auditing.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "category": "workflow"
     }
   ]
