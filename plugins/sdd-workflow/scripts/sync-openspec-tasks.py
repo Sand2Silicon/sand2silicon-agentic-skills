@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Sync OpenSpec tasks.md completion state from closed Beads issues.
+"""Sync OpenSpec tasks.md state from Beads issue statuses.
 
-Run automatically via Claude Code PostToolUse hook after `bd close` calls,
-or manually: python3 scripts/sync-openspec-tasks.py
+Run automatically via Claude Code Stop hook, or manually:
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py
 
-For each closed Beads issue whose description contains a scoped task ref like
-`change:signal-generation/tasks.md: X.Y`, marks the corresponding checkbox in
-that change's tasks.md as `[x]`. Unscoped refs (`tasks.md: X.Y`) are matched
-only when a single active (non-archived) change exists, to prevent cross-change
-contamination.
+For each Beads issue whose description contains a scoped task ref like
+`change:signal-generation/tasks.md: X.Y`:
+  - in_progress bead  →  marks task [~]  (claimed/underway)
+  - closed bead       →  marks task [x]  (complete; overrides [~])
+
+Unscoped refs (`tasks.md: X.Y`) are matched only when a single active
+(non-archived) change exists, to prevent cross-change contamination.
 
 When all tasks in a change are complete with high confidence, auto-archives the
 change. When confidence is uncertain, prompts the user instead.
@@ -37,8 +39,10 @@ OPENSPEC_CHANGES = WORKSPACE / "openspec" / "changes"
 SCOPED_REF_PATTERN = re.compile(r"change:([\w-]+)/tasks\.md:?\s*([\d]+\.[\d]+)(?!\d)")
 # Legacy unscoped format: tasks.md: X.Y (ambiguous across changes)
 UNSCOPED_REF_PATTERN = re.compile(r"tasks\.md:?\s*([\d]+\.[\d]+)(?!\d)")
-# Matches open [ ] and in-progress [~] tasks — both transition to [x] on bead closure
+# Matches [ ] and [~] tasks — both transition to [x] on bead closure
 OPEN_TASK_PATTERN = re.compile(r"^(\s*- \[[ ~]\] )([\d]+\.[\d]+)(?!\d)(\b.*)", re.MULTILINE)
+# Matches only [ ] tasks — transition to [~] on bead claim (not already in-progress or done)
+UNOPENED_TASK_PATTERN = re.compile(r"^(\s*- \[ \] )([\d]+\.[\d]+)(?!\d)(\b.*)", re.MULTILINE)
 DONE_TASK_PATTERN = re.compile(r"- \[x\] ([\d]+\.[\d]+)(?!\d)", re.MULTILINE)
 
 
@@ -119,6 +123,24 @@ def mark_tasks_complete(tasks_file: Path, refs: set[str]) -> tuple[str, list[str
     return new_content, changes
 
 
+def mark_tasks_in_progress(tasks_file: Path, refs: set[str]) -> tuple[str, list[str]]:
+    """Mark matching unopened [ ] tasks as [~]. Skips already-[~] and [x] tasks."""
+    content = tasks_file.read_text()
+    changes = []
+
+    def replacer(m):
+        prefix, ref, rest = m.group(1), m.group(2), m.group(3)
+        if ref in refs:
+            changes.append(f"  task {ref}: [ ] → [~]")
+            return prefix.replace("[ ]", "[~]") + ref + rest
+        return m.group(0)
+
+    new_content = UNOPENED_TASK_PATTERN.sub(replacer, content)
+    if changes:
+        tasks_file.write_text(new_content)
+    return new_content, changes
+
+
 def get_open_task_refs(content: str) -> set[str]:
     """Return refs for tasks that are open [ ] or in-progress [~]."""
     return set(re.findall(r"^\s*- \[[ ~]\] (?<!\d)([\d]+\.[\d]+)(?!\d)", content, re.MULTILINE))
@@ -143,12 +165,14 @@ def main() -> int:
         return 0
 
     closed_issues = get_issues_by_status("closed")
-    open_issues = get_issues_by_status("open") + get_issues_by_status("in_progress")
+    inprogress_issues = get_issues_by_status("in_progress")
+    open_issues = get_issues_by_status("open") + inprogress_issues
 
-    if not closed_issues:
+    if not closed_issues and not inprogress_issues:
         return 0
 
     closed_refs_by_change = collect_task_refs_by_change(closed_issues)
+    inprogress_refs_by_change = collect_task_refs_by_change(inprogress_issues)
     open_refs_by_change = collect_task_refs_by_change(open_issues)
 
     # All non-archived changes with tasks.md files
@@ -157,23 +181,47 @@ def main() -> int:
     for tasks_file in tasks_files:
         change = tasks_file.parent.name
 
-        # Resolve refs scoped to this specific change
         closed_refs = resolve_refs_for_change(change, closed_refs_by_change, active_changes)
+        inprogress_refs = resolve_refs_for_change(change, inprogress_refs_by_change, active_changes)
         open_refs_in_beads = resolve_refs_for_change(change, open_refs_by_change, active_changes)
 
-        if not closed_refs:
+        if not closed_refs and not inprogress_refs:
             continue
 
-        try:
-            content, changes = mark_tasks_complete(tasks_file, closed_refs)
-        except (IOError, OSError) as e:
-            print(f"[sync-openspec-tasks] Warning: could not process {tasks_file}: {e}")
-            continue
+        header_printed = False
 
-        if changes:
-            print(f"[sync-openspec-tasks] {change}/tasks.md updated:")
-            for c in changes:
-                print(c)
+        # Step 1: closed beads → [x]  (overrides [~] if already marked)
+        if closed_refs:
+            try:
+                content, changes = mark_tasks_complete(tasks_file, closed_refs)
+            except (IOError, OSError) as e:
+                print(f"[sync-openspec-tasks] Warning: could not process {tasks_file}: {e}")
+                continue
+            if changes:
+                print(f"[sync-openspec-tasks] {change}/tasks.md updated:")
+                for c in changes:
+                    print(c)
+                header_printed = True
+        else:
+            try:
+                content = tasks_file.read_text()
+            except (IOError, OSError) as e:
+                print(f"[sync-openspec-tasks] Warning: could not read {tasks_file}: {e}")
+                continue
+
+        # Step 2: in_progress beads → [~]  (only [ ] tasks not already advanced)
+        if inprogress_refs:
+            try:
+                content, ip_changes = mark_tasks_in_progress(tasks_file, inprogress_refs)
+            except (IOError, OSError) as e:
+                print(f"[sync-openspec-tasks] Warning: could not process {tasks_file}: {e}")
+                continue
+            if ip_changes:
+                if not header_printed:
+                    print(f"[sync-openspec-tasks] {change}/tasks.md updated:")
+                    header_printed = True
+                for c in ip_changes:
+                    print(c)
 
         # Check completion
         open_task_refs = get_open_task_refs(content)
