@@ -13,8 +13,13 @@
     ],
     "Stop": [
       {
-        "type": "command",
-        "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py"
+          }
+        ]
       }
     ]
   }
