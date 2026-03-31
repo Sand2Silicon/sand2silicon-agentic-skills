@@ -1,8 +1,10 @@
 # Spec Planning Template
 
-A structured starting point for planning a new change with `/opsx:propose`. Fill in the sections relevant to your work, then use this as the prompt for an interactive planning session.
+A structured starting point for planning a new change with OpenSpec. Fill in the sections relevant to your work, then use this as the prompt for `/opsx:propose` (or `/opsx:explore` first for complex/ambiguous work).
 
-> **Tip:** The `/plan-spec` skill automates context gathering and drives this conversation interactively. Use this template directly when you prefer manual control or want to prepare offline.
+> **Tip:** The `/plan-spec` skill automates context gathering and routes to the right OpenSpec command. Use this template directly when you prefer manual control or want to prepare offline.
+>
+> **When to explore first:** If you have multiple unknowns, cross-cutting changes, or aren't sure about the approach, start with `/opsx:explore <change-name>` using this context. Explore drives a free-form interactive investigation, then transition to `/opsx:propose` when direction is clear.
 
 ---
 
@@ -69,7 +71,11 @@ This should be a back-and-forth conversation:
 
 **Fill in what you know, leave blank what you don't.** The "Research needed" section is the most important — it tells the planning agent what to investigate before designing, which prevents premature decisions.
 
-**The "Process instructions" section is reusable as-is** for most specs. Modify only if you want a different interaction style (e.g., "just generate everything, no questions" for small/obvious changes).
+**The "Process instructions" section is the key to interactive planning.** These instructions tell `/opsx:propose` to research, ask questions, and have a back-and-forth conversation instead of generating artifacts in one shot. Modify only if you want a different interaction style (e.g., "just generate everything, no questions" for small/obvious changes).
+
+**Two paths for complex work:**
+- **`/opsx:explore` → `/opsx:propose`**: Use explore for free-form investigation when you have many unknowns. Explore drives the interactive conversation, then propose generates artifacts informed by the exploration.
+- **`/opsx:propose` with process instructions**: The process instructions tell propose to research and ask questions as part of artifact generation. Works well when the scope is clear but you want the agent to verify assumptions before committing to a design.
 
 **Quality requirements are non-negotiable defaults.** Every spec should include acceptance criteria and test tasks. Add domain-specific quality gates as needed (e.g., "must handle N requests/sec", "must pass security audit").
 

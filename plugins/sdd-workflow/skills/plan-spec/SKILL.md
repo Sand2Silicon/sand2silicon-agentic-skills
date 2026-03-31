@@ -1,18 +1,20 @@
 ---
 name: plan-spec
-description: Interactive spec planning that automates context gathering (JIRA tickets, roadmap phases, project patterns) and drives a structured back-and-forth conversation leading to /opsx:propose. Use when starting a new body of work — replaces manually editing a spec planning template. Detects available context sources and adapts the flow accordingly.
+description: Automated context gathering (JIRA tickets, roadmap phases, project patterns) that feeds OpenSpec's planning workflow. Gathers context, assesses complexity, then routes to /opsx:explore (interactive research) or /opsx:propose (direct artifact generation). Use when starting a new body of work.
 user-invocable: true
 ---
 
 # Plan Spec
 
-Interactive planning that gathers context automatically, drives a structured conversation, and produces high-quality OpenSpec artifacts via `/opsx:propose`.
+Automated context gathering that feeds OpenSpec's planning workflow. Gathers project context, assesses complexity, and routes to the right OpenSpec command — `/opsx:explore` for complex/ambiguous work, `/opsx:propose` for well-defined work.
 
-**Input**: `/plan-spec <change-name> [PROJ-123 PROJ-456 ...] [--epic N]`
+**Input**: `/plan-spec <change-name> [PROJ-123 PROJ-456 ...] [--epic N] [--explore] [--no-explore]`
 
 - `<change-name>`: kebab-case name for the OpenSpec change (required)
 - `PROJ-123 ...`: JIRA ticket IDs (optional — triggers JIRA context gathering)
 - `--epic N`: Roadmap epic number for phase context (optional)
+- `--explore`: Force routing to `/opsx:explore` before `/opsx:propose`
+- `--no-explore`: Skip explore, go directly to `/opsx:propose` with gathered context
 
 ---
 
@@ -95,13 +97,11 @@ List active changes and their completion status (count of `[x]`, `[~]`, `[ ]` ta
 
 ---
 
-## Step 3: Interactive planning conversation
+## Step 3: Review context and assess complexity
 
-**The back-and-forth dialog IS the product.** Do not rush through this to "be efficient." The conversation catches misunderstandings that would otherwise become expensive bugs during implementation.
+Present a brief summary of gathered context and assess whether this work needs interactive exploration or can go directly to artifact generation.
 
-### 3a: Establish scope
-
-Present what you've gathered and ask the user to fill gaps:
+### 3a: Context summary
 
 ```
 ## Planning: <change-name>
@@ -114,102 +114,125 @@ Present what you've gathered and ask the user to fill gaps:
 
 ### Scope
 <Synthesize a clear statement of what this change will accomplish, drawing from JIRA tickets, roadmap context, and user input>
-
-### Questions before we proceed
-1. Does this scope match what you have in mind? Anything to add or exclude?
-2. Are there constraints I should know about? (performance, compatibility, budget)
-3. Any design preferences? (patterns to follow, modules to avoid touching)
-4. What don't you know yet? (research questions, unknowns to investigate)
 ```
 
-**Wait for the user's response.** Their answers shape everything downstream.
+### 3b: Route decision
 
-### 3b: Research phase
+If `--explore` or `--no-explore` was specified, respect the flag. Otherwise, assess and recommend:
 
-Based on scope and user answers, investigate unknowns:
+**Signals that favor `/opsx:explore` first:**
+- No JIRA tickets or vague/missing acceptance criteria
+- Multiple unknowns or open research questions
+- Cross-cutting change touching 3+ modules or introducing a new pattern
+- User's description is exploratory ("figure out how to...", "investigate...", "not sure about...")
+- Novel architecture not seen in the codebase
 
-- **Read relevant source code** to understand current architecture, patterns, and integration points
-- **Check APIs, libraries, or dependencies** mentioned in the scope
-- **Verify assumptions** about existing code (function signatures, module boundaries, configuration)
-- **Identify technical risks** or unknowns that could affect the design
+**Signals that favor direct `/opsx:propose`:**
+- Clear JIRA tickets with concrete, testable acceptance criteria
+- Well-understood pattern (extending existing module in an established way)
+- Small/focused scope within a single module
+- User stated specific design preferences or constraints upfront
 
-Present findings and ask follow-up questions:
-
-```
-### Research findings
-1. <Finding — e.g., "The auth module uses middleware chain pattern, new feature should follow same">
-2. <Finding — e.g., "Library X doesn't support feature Y — alternative Z does, with trade-off...">
-3. <Risk — e.g., "Module A assumes single-tenant; this change introduces multi-tenant, needs refactor">
-
-### Design questions
-1. <Should we extend existing module or create a new one? Trade-offs: ...>
-2. <Approach A (simpler, less flexible) vs Approach B (more work, extensible) — preference?>
-```
-
-**Wait for the user's response.** Multiple rounds are normal and valuable. Iterate until both sides are confident in the direction.
-
-### 3c: Design alignment
-
-Once scope and research are settled, propose the high-level design:
+Present the recommendation:
 
 ```
-### Proposed approach
-- **Module structure:** <where new code lives, how it integrates>
-- **Key interfaces:** <API shape, data flow>
-- **Testing strategy:** <what gets unit tests, integration tests, smoke tests>
-- **Integration points:** <where this touches existing code>
+### Recommended path
 
-### Task decomposition (rough)
-1. <Task group 1: description — N subtasks>
-2. <Task group 2: description — M subtasks>
-3. <Testing: unit + integration tasks>
+**→ explore first** (or **→ direct to propose**)
+Reasoning: <1-2 sentences citing specific signals from the gathered context>
 
-### Acceptance criteria summary
-<Consolidated list from JIRA (verbatim) + user-specified criteria>
-
-Does this match your mental model? Anything to adjust before generating the full spec?
+Confirm, or override with `explore` / `no-explore`.
 ```
 
-**Wait for confirmation or adjustments.** This is the last checkpoint before artifact generation.
+**Wait for user confirmation.** Then proceed to Step 4a or 4b accordingly.
 
 ---
 
-## Step 4: Compile and invoke /opsx:propose
+## Step 4a: Explore path — invoke /opsx:explore
 
-Once alignment is reached, compile the full planning context. **Present it to the user for review before invoking** — they should see exactly what goes into the planning prompt.
+When the explore path is chosen, compile the gathered context and hand off to OpenSpec's interactive exploration. The back-and-forth conversation happens inside `/opsx:explore`, not here.
 
 ```
-## Compiled planning context for /opsx:propose
+/opsx:explore <change-name>
+
+## Context gathered by plan-spec
 
 ### What to build
-<Refined description incorporating all discussion>
+<Scope statement from Step 3a>
 
 ### Source references
-<JIRA tickets, roadmap epics, linked specs — with IDs>
-
-### Research findings
-<Key findings that should inform spec design>
+<JIRA tickets (with verbatim acceptance criteria), roadmap epics, linked specs — with IDs>
 
 ### Known constraints
 <From user input, project template, and discovery>
 
-### Design decisions
-<Agreed-upon approach from Step 3c>
+### Domain context
+<From project-specific planning template, if available>
 
 ### Quality requirements
-- [ ] All tasks must have concrete acceptance criteria
-- [ ] Include test tasks for every module
-- [ ] Tests must reference specific spec scenarios
+- [ ] All tasks must have concrete acceptance criteria (verifiable pass/fail)
+- [ ] Include test-creation tasks for every module (unit + integration)
+- [ ] Tests must reference specific spec scenarios they validate
+<Project-specific quality gates from template>
+
+### What to investigate
+<Open questions, unknowns, research areas identified during context gathering>
+```
+
+After `/opsx:explore` concludes and the user is satisfied with the direction, proceed:
+
+```
+Exploration complete. Ready to generate artifacts.
+
+→ Invoking /opsx:propose <change-name> with the explored context.
+```
+
+Then invoke `/opsx:propose <change-name>`. The conversation context from explore carries forward — no need to re-compile. `/opsx:propose` will generate the artifacts informed by the exploration.
+
+---
+
+## Step 4b: Direct path — invoke /opsx:propose
+
+When going directly to propose, compile the gathered context with process instructions that tell propose to drive any remaining interactive planning as part of artifact generation.
+
+**Present the compiled context to the user for review before invoking.**
+
+```
+/opsx:propose <change-name>
+
+## Context gathered by plan-spec
+
+### What to build
+<Scope statement from Step 3a>
+
+### Source references
+<JIRA tickets (with verbatim acceptance criteria), roadmap epics, linked specs — with IDs>
+
+### Known constraints
+<From user input, project template, and discovery>
+
+### Domain context
+<From project-specific planning template, if available>
+
+### Quality requirements
+- [ ] All tasks must have concrete acceptance criteria (verifiable pass/fail)
+- [ ] Include test-creation tasks for every module (unit + integration)
+- [ ] Tests must reference specific spec scenarios they validate
 <Project-specific quality gates from template>
 
 ### Acceptance criteria (from JIRA)
 <Verbatim JIRA acceptance criteria — these are authoritative>
 
 ### Process instructions
-Research first. Come back with questions. Challenge defaults. Review your work. Generate all artifacts.
+This should be a back-and-forth conversation, not a one-shot generation:
+1. **Research first** — investigate unknowns before proposing anything. Read the actual codebase, check APIs, verify assumptions.
+2. **Come back with questions** — present options, trade-offs, and ask for input on design decisions before generating artifacts.
+3. **Challenge your own defaults** — if the "textbook" answer seems too simple, dig deeper. The user will push back if something feels off.
+4. **Review your own work** — after generating artifacts, objectively audit for completeness, coherence, circular dependencies, and gaps.
+5. **Generate all artifacts** — proposal, design, specs (with acceptance scenarios), tasks (with acceptance criteria), and test tasks.
 ```
 
-After the user confirms, invoke `/opsx:propose <change-name>` with the compiled context.
+After the user confirms the context, invoke `/opsx:propose <change-name>` with the compiled context.
 
 **After `/opsx:propose` completes:**
 
@@ -223,12 +246,11 @@ Next step: /generate-spec-beads <change-name>
 
 ## Guardrails
 
-- **The conversation is the value.** Don't collapse the interactive steps into a single prompt. The back-and-forth catches misunderstandings early.
+- **Plan-spec gathers context; OpenSpec drives conversation.** Don't duplicate the interactive planning that `/opsx:explore` or the process instructions in `/opsx:propose` will handle. Your job is to automate the context gathering and route to the right workflow.
 - **JIRA is authoritative when active.** If the user's description conflicts with JIRA acceptance criteria, flag the conflict explicitly — don't silently prefer one.
-- **Don't auto-submit to /opsx:propose.** Present the compiled context for review first.
-- **Research the actual codebase.** Don't assume APIs, module structure, or patterns — read the code. This prevents specs that describe aspirational architecture instead of reality.
-- **The template is a guide, not a script.** Skip sections that don't apply. Expand sections that need depth. Follow the conversation wherever it goes.
+- **Don't auto-submit.** Present the compiled context for review before invoking explore or propose.
 - **Flag vague acceptance criteria.** If a JIRA criterion is untestable ("should be fast", "must be user-friendly"), ask for specific targets before proceeding.
 - **Don't over-gather.** If JIRA MCP isn't available, that's fine — proceed without it. If there's no roadmap, skip that section. Adapt to what exists.
+- **The template is a guide, not a script.** Skip sections that don't apply. Expand sections that need depth.
 
 ARGUMENTS: $ARGUMENTS
