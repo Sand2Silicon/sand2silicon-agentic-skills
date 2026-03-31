@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 
-WORKSPACE = Path("/workspace")
+WORKSPACE = Path.cwd()
 OPENSPEC_CHANGES = WORKSPACE / "openspec" / "changes"
 
 # Scoped format: change:<name>/tasks.md: X.Y (preferred)

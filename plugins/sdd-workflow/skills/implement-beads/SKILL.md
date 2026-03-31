@@ -32,6 +32,21 @@ Drive implementation of Beads-tracked work. Beads is the execution engine; OpenS
 
 Default to classic subagents for individual beads. Use Team Agents for coordinated wave dispatch when available.
 
+**Model selection — use the right model for the job:**
+
+| Agent role | Model | Rationale |
+|---|---|---|
+| **implementation-agent** | `sonnet` | Code generation is sonnet's strength; fast enough for parallel waves |
+| **test-writer-agent** | `sonnet` | Structured, spec-driven test authoring — well within sonnet's capability |
+| **review-agent** | `sonnet` | Code review against acceptance criteria — bounded reasoning |
+| **Exploration / search subagents** | `haiku` | Read-only tasks (grep, glob, file reads) need speed, not deep reasoning |
+| **Scaffolding / boilerplate agents** | `haiku` | Template expansion, config file creation, simple mechanical edits |
+| **Orchestrator (you)** | `opus` | Planning waves, dependency analysis, judgment calls — run at opus |
+
+When dispatching via the `Agent` tool, always pass the `model` parameter. Example: `Agent(model: "sonnet", ...)`. When dispatching exploration-only subagents (subagent_type: "Explore"), use `model: "haiku"`.
+
+**Escalation:** If a sonnet agent fails a task or produces low-quality output, retry once at `opus` before filing a gap bead. Note the escalation in the wave summary.
+
 ---
 
 ## Step 0: Pre-flight
@@ -207,20 +222,20 @@ Group beads into waves — beads with no mutual dependencies go in the same wave
 
 ```
 Wave 1 (all dispatched in parallel):
-  -> Agent (impl):        workspace-5ka  — add cache layer
-  -> Agent (test-writer): workspace-5kt  — author tests for cache layer (from spec)
-  -> Agent (impl):        workspace-olb  — scaffold API module
-  -> Agent (test-writer): workspace-olt  — author tests for API module (from spec)
+  -> Agent (impl, model=sonnet):        workspace-5ka  — add cache layer
+  -> Agent (test-writer, model=sonnet): workspace-5kt  — author tests for cache layer (from spec)
+  -> Agent (impl, model=sonnet):        workspace-olb  — scaffold API module
+  -> Agent (test-writer, model=sonnet): workspace-olt  — author tests for API module (from spec)
 [wait for all to complete]
 
 Wave 1 reviews (review beads unblock after impl+test-authoring close):
-  -> Agent (review): workspace-5kr  — review cache layer
-  -> Agent (review): workspace-olr  — review API module
+  -> Agent (review, model=sonnet): workspace-5kr  — review cache layer
+  -> Agent (review, model=sonnet): workspace-olr  — review API module
 [wait; handle gap beads if filed]
 
 Wave 2 (unblocked after Wave 1 reviews close):
-  -> Agent (impl):        workspace-7mn  — integrate cache + API
-  -> Agent (test-writer): workspace-7mt  — author integration tests
+  -> Agent (impl, model=sonnet):        workspace-7mn  — integrate cache + API
+  -> Agent (test-writer, model=sonnet): workspace-7mt  — author integration tests
 ```
 
 After each wave completes, run `bd ready` to identify the next wave and dispatch immediately.
@@ -280,19 +295,25 @@ If any beads are stuck in `in_progress`, STOP and investigate before proceeding.
 
 ### 4e. Subagent prompt template
 
-Include this context in every subagent dispatch:
+Include this context in every subagent dispatch. **Always set the `model` parameter** per the model selection table above.
 
 ```
-Bead: <id> — <title>
-Role: implementation-agent | test-writer-agent | review-agent
-Project: test-run=<cmd>, lint=<cmd>, install=<cmd>, source_root=<path>
-<if JIRA active>  JIRA: <ticket-key> — acceptance criteria cached from MCP
-<if reference repos>  Reference: use mcp__github__get_file_contents owner="<org>" repo="<repo>"
-<if test folder conventions>  Test file locations: <list from Step 0d>
-<if test-writer>  Author tests from spec/acceptance criteria ONLY — do not read implementation code.
-<if review-agent>  File gap beads for issues found — do not fix them. Only close when all criteria verified.
+Agent(
+  model: "<sonnet|haiku>",                    # Per model selection table
+  subagent_type: "<general-purpose|Explore>",  # Explore + haiku for read-only tasks
+  prompt: """
+    Bead: <id> — <title>
+    Role: implementation-agent | test-writer-agent | review-agent
+    Project: test-run=<cmd>, lint=<cmd>, install=<cmd>, source_root=<path>
+    <if JIRA active>  JIRA: <ticket-key> — acceptance criteria cached from MCP
+    <if reference repos>  Reference: use mcp__github__get_file_contents owner="<org>" repo="<repo>"
+    <if test folder conventions>  Test file locations: <list from Step 0d>
+    <if test-writer>  Author tests from spec/acceptance criteria ONLY — do not read implementation code.
+    <if review-agent>  File gap beads for issues found — do not fix them. Only close when all criteria verified.
 
-Steps: bd show <id> -> bd update <id> --claim -> [do work] -> bd close <id> (verify Closed)
+    Steps: bd show <id> -> bd update <id> --claim -> [do work] -> bd close <id> (verify Closed)
+  """
+)
 ```
 
 ### Pause conditions
@@ -336,7 +357,7 @@ bd list --status=in_progress
 # If ANY remain → STOP. Do not proceed.
 
 # 2. Sync spec state (if OpenSpec active)
-test -s scripts/sync-openspec-tasks.py && python3 scripts/sync-openspec-tasks.py
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py
 
 # 3. Spec completion audit (if OpenSpec active)
 # /spec-completion-auditor <change-name>
@@ -386,7 +407,7 @@ When JIRA is active, prefix with the ticket number: `PROJ-123: add-auth-middlewa
 ### Post-session (both modes)
 
 When OpenSpec is active and all beads are closed:
-1. Run `python3 scripts/sync-openspec-tasks.py` to mark spec-tasks `[x]`
+1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py` to mark spec-tasks `[x]`
 2. Run `/spec-completion-auditor <change-name>` to verify completeness
 3. If all tasks verified: suggest `/openspec-archive-change <change-name>`
 
@@ -406,13 +427,14 @@ Context: <OpenSpec | JIRA PROJ-123 | Roadmap Phase 2 | Beads only>
 **After each wave:**
 ```
 Wave 1 impl+test-authoring complete (N beads closed):
-  V <id> (impl)        — <title>
-  V <id> (test-writer) — <title>
+  V <id> (impl)        [sonnet] — <title>
+  V <id> (test-writer) [sonnet] — <title>
   Verification: 0 in_progress | N review beads unblocked -> dispatching reviews
 
 Wave 1 reviews (N closed):
-  V <id> — Review: passed
+  V <id> — Review: passed [sonnet]
   ! <id> — Review: 1 gap filed -> <gap-id> (routed to impl-agent)
+  ^ <id> — Escalated to opus after sonnet failure; passed on retry
 ```
 
 **On completion:**

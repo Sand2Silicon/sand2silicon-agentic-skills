@@ -80,7 +80,7 @@ For each untracked spec task with no corresponding bead:
 
 After verification, run the sync to apply any task state updates:
 ```bash
-python3 scripts/sync-openspec-tasks.py
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py
 ```
 
 **Note:** The sync script may auto-archive a change if all tasks are `[x]` with full Beads coverage. Steps 4-5 apply direct edits; this step serves as a final consistency check.
