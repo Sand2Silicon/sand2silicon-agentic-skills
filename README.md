@@ -1,4 +1,4 @@
-# sand2silicon-agentic-skills
+# stevens-agentic-skills
 
 Steven Peterson's personal Claude Code plugin marketplace.
 
