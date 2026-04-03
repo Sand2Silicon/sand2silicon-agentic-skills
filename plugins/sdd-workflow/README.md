@@ -2,6 +2,9 @@
 
 A Claude Code plugin that orchestrates the full lifecycle of spec-driven development — from requirements gathering through implementation, review, and verification — using AI agents coordinated by a dependency-aware task graph.
 
+// todo: insert table of contents
+
+
 ## The Core Idea
 
 Instead of giving an AI agent a vague prompt and hoping for the best, this workflow:
@@ -13,8 +16,17 @@ Instead of giving an AI agent a vague prompt and hoping for the best, this workf
 
 The result: auditable, parallelized, spec-compliant implementation with full traceability from requirements to code.
 
-## How It Fits Together
+## AI-Driven / Spec-Driven-Development workflow:
 
+`JIRA → OpenSpec plan → /generate-spec-beads → /implement-beads → Review / Pull Request`
+- JIRA is the system of record for epics and stories.
+- OpenSpec captures what and why — the planning artifact.
+- Beads captures how, in what order, with what validation — the execution artifact.
+- Claude Code with subagents executes implementation in parallel where possible.
+- Claude Skills help glue the phases together with automated, predictable, repeatable processes.
+
+
+_Graph: SDD-Workflow Plugin - the big picture_
 ```mermaid
 flowchart TD
     classDef context fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
@@ -93,6 +105,9 @@ Two paths into planning, depending on how well-defined the work is:
 
 Both paths produce **OpenSpec artifacts** (proposal, design, specs with acceptance scenarios, ordered tasks) that feed into bead generation.
 
+Initial input will come from one-or-more Jira tickets, a pre-planning roadmap document that describes phases/epics, or user-written description.
+
+_Graph: Planning Phase:_
 ```mermaid
 flowchart LR
     classDef planning fill:#3694fc,stroke:#0263fb,color:#fff
@@ -110,12 +125,13 @@ flowchart LR
     DIALOG --> PROPOSE["/opsx:propose<br/>with populated context"]:::success
 ```
 
-**The back-and-forth conversation IS the product.** The interactive planning dialog catches misunderstandings that would otherwise become expensive bugs during implementation. `/plan-spec` structures this conversation, not replaces it.
+**The back-and-forth conversation IS the product.** The interactive planning dialog catches misunderstandings that would otherwise become expensive bugs during implementation. `/plan-spec` structures this conversation, not replaces it. This is KEY to front-loading human-in-the-loop involvement, to remove interaction during the implementation phase.
 
 ### Stage 2: Bead Generation (`/generate-spec-beads`)
 
 Converts the planned tasks into a **dependency-wired Beads graph** — the execution plan.
 
+_Graph: Example new-feature tasks:_
 ```mermaid
 flowchart LR
     classDef source fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
@@ -124,7 +140,8 @@ flowchart LR
     classDef review fill:#ff5b8a,stroke:#d44470,color:#fff
     classDef gate fill:#00c2a0,stroke:#009a7c,color:#fff
 
-    subgraph "OpenSpec tasks.md"
+    subgraph "New features from:
+     OpenSpec tasks.md"
         T1["1.1 Add cache layer"]:::source
         T2["1.2 Scaffold API module"]:::source
         T3["2.1 Integrate cache + API"]:::source
@@ -239,7 +256,7 @@ Produces a structured report with auto-synced tasks, gaps, and archive readiness
 
 ```bash
 # In Claude Code
-/plugin marketplace add <org>/sand2silicon-agentic-skills
+/plugin marketplace add SPetersonNICE/stevens-agentic-skills
 /plugin install sdd-workflow --scope project
 ```
 
@@ -264,6 +281,8 @@ Produces a structured report with auto-synced tasks, gaps, and archive readiness
 
 # 1. Plan interactively (or /spec-from-tickets for well-defined JIRA tickets)
 /plan-spec add-auth-middleware PROJ-123 PROJ-456
+
+... Have planning conversation, answer tightly defined questions from the AI ...
 
 # 2. Generate beads from the completed OpenSpec change
 /generate-spec-beads add-auth-middleware
@@ -296,7 +315,7 @@ Per-change copy (optional, via new-plan.sh)
 ```
 
 - `/plan-spec` reads the project template automatically (falls back to base)
-- `scripts/new-plan.sh <change-name>` copies the template for offline editing
+- `scripts/new-plan.sh <change-name>` copies the template for offline editing for a new feature/task, (optional step).
 - Edit the project template freely — it's yours to customize
 
 ## Context Source Flows
@@ -334,7 +353,7 @@ flowchart TD
 | **Beads** (`bd` CLI) | Distributed, graph-based issue tracker backed by embedded Dolt database. Tracks every unit of work with dependencies. |
 | **OpenSpec** (`openspec` CLI) | Spec-driven planning tool. Produces proposal, design, specs, and tasks artifacts. |
 | **JIRA MCP** | When configured, provides access to JIRA tickets for requirements and acceptance criteria. |
-| **sync-openspec-tasks.py** | Runs automatically on `bd close` via PostToolUse hook. Marks completed spec tasks `[x]`. |
+| **sync-openspec-tasks.py** | Runs automatically on `bd close` via PostToolUse hook. Marks completed spec tasks `[x]`. If there’s a delta between closed beads and closed tasks, validate work fulfills acceptance criteria and nothing was missed. |
 | **new-plan.sh** | Copies the planning template for a new change. Usage: `scripts/new-plan.sh <change-name>` |
 
 ## Task State Convention

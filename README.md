@@ -4,7 +4,7 @@ Steven Peterson's personal Claude Code plugin marketplace.
 
 ## Install
 ```
-/plugin marketplace add sand2silicon/sand2silicon-agentic-skills
+/plugin marketplace add SPetersonNICE/stevens-agentic-skills
 ```
 
 ## Plugins
