@@ -2,7 +2,26 @@
 
 A Claude Code plugin that orchestrates the full lifecycle of spec-driven development — from requirements gathering through implementation, review, and verification — using AI agents coordinated by a dependency-aware task graph.
 
-// todo: insert table of contents
+## Table of Contents
+
+- [The Core Idea](#the-core-idea)
+- [AI-Driven / Spec-Driven-Development workflow](#ai-driven--spec-driven-development-workflow)
+- [Workflow Stages](#workflow-stages)
+  - [Stage 0: Project Setup (`/sdd-workflow-init`)](#stage-0-project-setup-sdd-workflow-init)
+  - [Stage 1: Planning](#stage-1-planning)
+  - [Stage 2: Bead Generation (`/generate-spec-beads`)](#stage-2-bead-generation-generate-spec-beads)
+  - [Stage 3: Implementation (`/implement-beads`)](#stage-3-implementation-implement-beads)
+  - [Stage 4: Verification (`/spec-completion-auditor`)](#stage-4-verification-spec-completion-auditor)
+- [Quick Reference](#quick-reference)
+  - [Installation](#installation)
+  - [Skill Commands](#skill-commands)
+  - [Typical Session](#typical-session)
+- [Template Architecture](#template-architecture)
+- [Context Source Flows](#context-source-flows)
+- [Key Tools](#key-tools)
+  - [Why Beads?](#why-beads)
+- [Task State Convention](#task-state-convention)
+- [Addendum: Evaluation & Improvement Opportunities](#addendum-evaluation--improvement-opportunities)
 
 
 ## The Core Idea
@@ -11,7 +30,7 @@ Instead of giving an AI agent a vague prompt and hoping for the best, this workf
 
 1. **Plans rigorously** — requirements, design decisions, acceptance criteria
 2. **Decomposes into a dependency graph** — each unit of work is a tracked "bead" with clear inputs, outputs, and dependencies
-3. **Executes with parallel agents** — an orchestrator dispatches specialized agents (implementation, testing, review) that work concurrently
+3. **Executes with parallel agents** — an orchestrator dispatches specialized agents (implementation, test-authoring, review) that work concurrently
 4. **Gates quality at every stage** — per-feature review agents verify work before downstream tasks begin
 
 The result: auditable, parallelized, spec-compliant implementation with full traceability from requirements to code.
@@ -29,13 +48,13 @@ The result: auditable, parallelized, spec-compliant implementation with full tra
 _Graph: SDD-Workflow Plugin - the big picture_
 ```mermaid
 flowchart TD
-    classDef context fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
-    classDef setup fill:#9ceed2,stroke:#00c2a0,color:#1a1a2e
-    classDef planning fill:#3694fc,stroke:#0263fb,color:#fff
-    classDef artifact fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
-    classDef execution fill:#6100ff,stroke:#4a00cc,color:#fff
-    classDef support fill:#f3b1c4,stroke:#ff5b8a,color:#1a1a2e
-    classDef success fill:#00c2a0,stroke:#009a7c,color:#fff
+    classDef context fill:#b5e6e2,stroke:#5ecfc5,color:#1a1a2e
+    classDef setup fill:#a5e4cc,stroke:#32b898,color:#1a1a2e
+    classDef planning fill:#6aa8f0,stroke:#4a8bd4,color:#fff
+    classDef artifact fill:#9cbef5,stroke:#6aa8f0,color:#1a1a2e
+    classDef execution fill:#7a54d9,stroke:#5e3dbf,color:#fff
+    classDef support fill:#efbdca,stroke:#d96585,color:#1a1a2e
+    classDef success fill:#36bca0,stroke:#289478,color:#fff
 
     subgraph CTX [" Context Sources "]
         JIRA["JIRA Tickets<br/><i>ultimate authority when active</i>"]:::context
@@ -63,8 +82,9 @@ flowchart TD
     subgraph SUP [" Support "]
         GR["/generate-roadmap<br/>Gap analysis + epic synthesis"]:::support
         DW["/distill-workflow<br/>Extract reusable patterns"]:::support
-        SYNC["sync-openspec-tasks.py<br/>Auto-sync bead state to tasks.md"]:::support
     end
+
+    SYNC["sync-openspec-tasks.py<br/>Auto-sync bead state to tasks.md"]:::support
 
     INIT --> PTPL
     JIRA -->|"tickets"| PS
@@ -86,7 +106,7 @@ flowchart TD
     SYNC -.->|"updates"| OS
 ```
 
-> **Color key:** <span style="color:#3694fc">Blue</span> = daily planning | <span style="color:#6100ff">Purple</span> = daily execution | <span style="color:#00c2a0">Green</span> = one-time setup / success | <span style="color:#ff5b8a">Pink</span> = support tools | <span style="color:#36ead0">Teal</span> = context sources
+> **Color key:** <span style="color:#6aa8f0">Blue</span> = daily planning | <span style="color:#7a54d9">Purple</span> = daily execution | <span style="color:#36bca0">Green</span> = one-time setup / success | <span style="color:#d96585">Pink</span> = support tools | <span style="color:#5ecfc5">Teal</span> = context sources
 
 ## Workflow Stages
 
@@ -110,10 +130,10 @@ Initial input will come from one-or-more Jira tickets, a pre-planning roadmap do
 _Graph: Planning Phase:_
 ```mermaid
 flowchart LR
-    classDef planning fill:#3694fc,stroke:#0263fb,color:#fff
-    classDef context fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
-    classDef dialog fill:#6100ff,stroke:#4a00cc,color:#fff
-    classDef success fill:#00c2a0,stroke:#009a7c,color:#fff
+    classDef planning fill:#6aa8f0,stroke:#4a8bd4,color:#fff
+    classDef context fill:#b5e6e2,stroke:#5ecfc5,color:#1a1a2e
+    classDef dialog fill:#7a54d9,stroke:#5e3dbf,color:#fff
+    classDef success fill:#36bca0,stroke:#289478,color:#fff
 
     PS["/plan-spec"]:::planning -->|"asks"| Q1["What to build?<br/>(tickets, roadmap, description)"]:::planning
     Q1 -->|"JIRA tickets"| FETCH["Fetch via JIRA MCP<br/>extract acceptance criteria"]:::context
@@ -131,47 +151,61 @@ flowchart LR
 
 Converts the planned tasks into a **dependency-wired Beads graph** — the execution plan.
 
-_Graph: Example new-feature tasks:_
+_Graph: Beads execution graph (3 features, 2 waves):_
 ```mermaid
-flowchart LR
-    classDef source fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
-    classDef impl fill:#3694fc,stroke:#0263fb,color:#fff
-    classDef test fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
-    classDef review fill:#ff5b8a,stroke:#d44470,color:#fff
-    classDef gate fill:#00c2a0,stroke:#009a7c,color:#fff
+%%{init: {"flowchart": {"subGraphTitleMargin": {"top": 8, "bottom": 20}}}}%%
+flowchart TD
+    classDef impl fill:#6aa8f0,stroke:#4a8bd4,color:#fff
+    classDef testauth fill:#b5e6e2,stroke:#5ecfc5,color:#1a1a2e
+    classDef review fill:#efbdca,stroke:#d96585,color:#1a1a2e
+    classDef gap fill:#f5e4b5,stroke:#c49028,color:#1a1a2e
+    classDef join fill:#a5e4cc,stroke:#32b898,color:#1a1a2e
+    classDef gate fill:#36bca0,stroke:#289478,color:#fff
 
-    subgraph "New features from:
-     OpenSpec tasks.md"
-        T1["1.1 Add cache layer"]:::source
-        T2["1.2 Scaffold API module"]:::source
-        T3["2.1 Integrate cache + API"]:::source
+    subgraph W1["Wave 1 — two features dispatched in parallel"]
+        I1["1.1 cache layer<br/>impl"]:::impl
+        TS1["1.1 cache layer<br/>test-authoring"]:::testauth
+        I2["1.2 API module<br/>impl"]:::impl
+        TS2["1.2 API module<br/>test-authoring"]:::testauth
     end
 
-    subgraph "Beads Graph (per feature)"
-        T1 --> I1["impl bead"]:::impl
-        T1 --> TS1["test bead"]:::test
-        I1 --> R1["review bead"]:::review
-        TS1 --> R1
+    I1 & TS1 --> R1
+    I2 & TS2 --> R2
 
-        T2 --> I2["impl bead"]:::impl
-        T2 --> TS2["test bead"]:::test
-        I2 --> R2["review bead"]:::review
-        TS2 --> R2
-
-        R1 --> I3["impl bead"]:::impl
-        R2 --> I3
-        T3 --> I3
-        T3 --> TS3["test bead"]:::test
-        I3 --> R3["review bead"]:::review
-        TS3 --> R3
+    subgraph W1R["Wave 1 Reviews — in parallel once Wave 1 closes"]
+        R1["1.1 review<br/>code + feature tests"]:::review
+        R2["1.2 review<br/>code + feature tests"]:::review
     end
 
-    R3 --> GATE["Build Gate"]:::gate
+    R1 -.->|"gap found"| G1["gap bead<br/>routed back to impl or test-authoring agent"]:::gap
+    G1 -.->|"gap resolved — re-verify"| R1
+
+    R1 & R2 --> W2U(["Wave 1 reviews passed<br/>Wave 2 unblocked"]):::join
+
+    subgraph W2["Wave 2 — unblocked after Wave 1 reviews pass"]
+        I3["2.1 integration<br/>impl"]:::impl
+        TS3["2.1 integration<br/>test-authoring"]:::testauth
+    end
+
+    W2U --> I3 & TS3
+
+    I3 & TS3 --> R3
+
+    subgraph W2R["Wave 2 Review"]
+        R3["2.1 review<br/>code + feature tests"]:::review
+    end
+
+    R3 -.->|"gap found"| G3["gap bead<br/>routed back to impl or test-authoring agent"]:::gap
+    G3 -.->|"gap resolved — re-verify"| R3
+
+    R3 & W2U --> ALLPASS(["all per-feature reviews passed"]):::join
+
+    ALLPASS --> BG["Build Gate<br/>full test suite + coverage + lint + type check"]:::gate
 ```
 
 **Key structural pattern — the per-feature triad:**
-- **Impl bead** + **Test bead** are independent (no dependency between them)
-- **Review bead** depends on both completing
+- **Impl bead** + **Test-authoring bead** are independent (no dependency between them)
+- **Review bead** depends on both completing; the review agent runs the feature's authored tests against the implementation and verifies acceptance criteria
 - Downstream work depends on the **review bead**, not the impl bead directly
 
 This structure enables maximum parallelism while ensuring nothing proceeds without review.
@@ -182,42 +216,42 @@ The orchestrator agent reads the bead graph and executes it in parallel waves:
 
 ```mermaid
 sequenceDiagram
-    box rgb(144, 182, 253) Orchestration
+    box rgb(88, 130, 200) Orchestration
         participant O as Orchestrator
     end
-    box rgb(54, 148, 252) Implementation
+    box rgb(60, 115, 185) Implementation
         participant IA as Impl Agents
     end
-    box rgb(172, 247, 243) Testing
-        participant TA as Test Agents
+    box rgb(55, 148, 138) Test-Authoring
+        participant TA as Test-Authoring Agents
     end
-    box rgb(243, 177, 196) Review
+    box rgb(180, 90, 118) Review
         participant RA as Review Agents
     end
 
     O->>O: bd ready (find unblocked beads)
     O->>O: Group into Wave 1
 
-    par Wave 1 — all dispatched simultaneously
+    par Wave 1 impl and test-authoring run concurrently
         O->>IA: implement bead A
-        O->>TA: test bead A (from spec, not impl)
+        O->>TA: author tests for bead A (from spec, not impl)
         O->>IA: implement bead B
-        O->>TA: test bead B (from spec, not impl)
+        O->>TA: author tests for bead B (from spec, not impl)
     end
 
     IA-->>O: bead A impl closed
-    TA-->>O: bead A test closed
+    TA-->>O: bead A test-authoring closed
     IA-->>O: bead B impl closed
-    TA-->>O: bead B test closed
+    TA-->>O: bead B test-authoring closed
 
     O->>O: bd ready (reviews now unblocked)
 
-    par Wave 1 Reviews
-        O->>RA: review bead A
-        O->>RA: review bead B
+    par Wave 1 reviews run concurrently
+        O->>RA: review bead A (code review + run feature tests, file gaps)
+        O->>RA: review bead B (code review + run feature tests, file gaps)
     end
 
-    alt Gaps found
+    alt When review agent finds gaps
         RA-->>O: gap beads filed
         O->>IA: fix gap bead
         IA-->>O: gap closed
@@ -238,8 +272,8 @@ sequenceDiagram
 | Role | What it does | Key constraint |
 |------|-------------|----------------|
 | **implementation-agent** | Writes production code for one bead | Follows design decisions; flags deviations |
-| **test-writer-agent** | Writes tests from spec/acceptance criteria | Never reads implementation code; tests define the contract |
-| **review-agent** | Verifies impl + tests against spec | Files gap beads for issues; never fixes them directly |
+| **test-writer-agent** | Authors tests from spec/acceptance criteria | Never reads implementation code; tests define the contract |
+| **review-agent** | Runs the feature's authored tests against the implementation; verifies all acceptance scenarios are satisfied; reviews code against spec and design decisions | Files gap beads for issues; never fixes them directly |
 
 ### Stage 4: Verification (`/spec-completion-auditor`)
 
@@ -324,12 +358,12 @@ The workflow adapts based on which context sources are available:
 
 ```mermaid
 flowchart TD
-    classDef decision fill:#3694fc,stroke:#0263fb,color:#fff
-    classDef full fill:#6100ff,stroke:#4a00cc,color:#fff
-    classDef road fill:#acf7f3,stroke:#36ead0,color:#1a1a2e
-    classDef spec fill:#90b6fd,stroke:#3694fc,color:#1a1a2e
-    classDef lean fill:#9ceed2,stroke:#00c2a0,color:#1a1a2e
-    classDef exec fill:#6100ff,stroke:#4a00cc,color:#fff
+    classDef decision fill:#6aa8f0,stroke:#4a8bd4,color:#fff
+    classDef full fill:#7a54d9,stroke:#5e3dbf,color:#fff
+    classDef road fill:#b5e6e2,stroke:#5ecfc5,color:#1a1a2e
+    classDef spec fill:#9cbef5,stroke:#6aa8f0,color:#1a1a2e
+    classDef lean fill:#a5e4cc,stroke:#32b898,color:#1a1a2e
+    classDef exec fill:#7a54d9,stroke:#5e3dbf,color:#fff
 
     START{What context<br/>sources exist?}:::decision
 
@@ -348,9 +382,21 @@ flowchart TD
 
 ## Key Tools
 
+### Why Beads?
+
+Most AI agent workflows pass results between agents as free-form prose — a review agent's findings become a paragraph in the next agent's prompt, which that agent must interpret, prioritize, and act on without any guarantee of completeness. This works for simple tasks but breaks down quickly: findings get condensed, ambiguous, or lost; there's no record of what was acted on versus silently deferred; and the orchestrator must hold state between waves to reason about what's still outstanding.
+
+Beads replaces descriptive context passing with a **structured, dependency-aware issue graph**. Every unit of work — implementation, test-authoring, review, gap resolution — is a first-class record with explicit state (`open`, `in_progress`, `closed`), typed dependency edges, and a persistent audit trail. Three concrete implications:
+
+**Enforced quality gates.** The per-feature triad (impl + test-authoring → review) isn't a suggested sequence — it's wired as hard edges in the dependency graph. A review bead cannot even be claimed until both the impl and test-authoring beads are closed. Features that depend on a review bead can't be dispatched until that review closes. The orchestrator doesn't need to track or remember this ordering; the graph enforces it structurally. The same applies to the final build gate: it cannot unblock until every preceding bead is closed.
+
+**Structured feedback loops.** When a review agent identifies a gap — a missing acceptance criterion, a test that fails against the implementation, a design deviation — it files a new bead with a precise title, explicit `Accept:` criteria, and an `Agent:` routing field directing it to the right agent type. That gap bead becomes a blocking prerequisite on the review bead itself: the review stays open, the orchestrator dispatches the gap in the next wave, and the review re-verifies before closing. Findings aren't communicated as suggestions in a summary paragraph; they're tracked work items with definitions of done that must be verifiably resolved.
+
+**Parallelism without coordination overhead.** Because dependencies are encoded in the graph rather than reasoned about per-prompt, the orchestrator calls `bd ready` after any wave and gets a precise, authoritative list of what's currently unblocked. No per-agent state to reconstruct, no risk of dispatching work that's still blocked, and reliable resume behavior if a session ends mid-implementation — the graph state persists independently of the orchestrator's context.
+
 | Tool | Purpose |
 |------|---------|
-| **Beads** (`bd` CLI) | Distributed, graph-based issue tracker backed by embedded Dolt database. Tracks every unit of work with dependencies. |
+| **Beads** (`bd` CLI) | Distributed, graph-based issue tracker backed by embedded Dolt database. Tracks every unit of work with typed dependencies, explicit state transitions, and full audit history. |
 | **OpenSpec** (`openspec` CLI) | Spec-driven planning tool. Produces proposal, design, specs, and tasks artifacts. |
 | **JIRA MCP** | When configured, provides access to JIRA tickets for requirements and acceptance criteria. |
 | **sync-openspec-tasks.py** | Runs automatically on `bd close` via PostToolUse hook. Marks completed spec tasks `[x]`. If there’s a delta between closed beads and closed tasks, validate work fulfills acceptance criteria and nothing was missed. |
@@ -424,7 +470,7 @@ Long orchestration sessions with many parallel agents can consume significant re
 |----------|--------------|----------------|
 | Spec-first AI development | Strong (enforced structurally) | Increasingly recognized as essential; most teams still prompt ad-hoc |
 | Dependency-graph task tracking | Strong (Beads DAG) | Most teams use flat task lists; graph-based is more sophisticated |
-| TDD with AI agents | Strong (test agents work from specs independently) | Growing adoption; many teams still write tests after implementation |
+| TDD with AI agents | Strong (test-authoring agents work from specs independently; review agents execute the suite) | Growing adoption; many teams still write tests after implementation |
 | Multi-agent orchestration | Strong (impl/test/review separation) | Emerging pattern; most teams use single-agent flows |
 | Quality gates | Strong (per-feature + final) | Best practice but rarely automated this granularly |
 | Source verification at audit | Strong (reads code, not just bead status) | Beyond most teams — typically trust issue closure |
