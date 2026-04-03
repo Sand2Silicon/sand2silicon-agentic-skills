@@ -293,6 +293,12 @@ bd ready                         # What unlocked next
 ```
 If any beads are stuck in `in_progress`, STOP and investigate before proceeding.
 
+**Sync tasks.md after every wave** (if OpenSpec active) — do not wait until session end:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py
+```
+Review the output. If tasks that should have been marked `[x]` were skipped, check that the closed bead descriptions contain `OpenSpec: change:<name>/tasks.md: X.Y` refs for **all** tasks that bead covers — not just the first. Fix missing refs with `bd update <id> --description="..."` before continuing.
+
 ### 4e. Subagent prompt template
 
 Include this context in every subagent dispatch. **Always set the `model` parameter** per the model selection table above.
@@ -356,12 +362,17 @@ Run validation using the commands detected in Step 0:
 bd list --status=in_progress
 # If ANY remain → STOP. Do not proceed.
 
-# 2. Sync spec state (if OpenSpec active)
+# 2. Sync spec state — MANDATORY (if OpenSpec active)
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync-openspec-tasks.py
+# Review script output. Every closed bead's tasks should now be [x].
+# If tasks remain [ ] after sync, bead descriptions are missing OpenSpec refs.
+# Fix the refs or manually mark tasks before proceeding — do not skip this check.
 
-# 3. Spec completion audit (if OpenSpec active)
-# /spec-completion-auditor <change-name>
-# If gaps reported → STOP until resolved.
+# 3. Spec completion audit — MANDATORY (if OpenSpec active)
+# This is NOT optional. Catches bead/task mismatches the sync script can't resolve
+# (e.g., multi-task beads with incomplete refs, manually closed beads, coverage gaps).
+/spec-completion-auditor <change-name>
+# If gaps reported → STOP. Resolve all mismatches before proceeding.
 
 # 4. Final test suite execution
 <test_execution_command>
@@ -385,10 +396,19 @@ cd <original-directory>
 # 3. Merge the feature branch
 git merge --no-ff "impl/<change-name>"
 
-# 4. Clean up (bd worktree remove runs safety checks)
-bd worktree remove ".worktrees/<change-name>"
+# 4. Regenerate build artifacts if applicable
+# Generated files (gRPC stubs, protobuf, codegen output) are gitignored and
+# do NOT survive a worktree merge. Check if any were added or modified:
+git diff --name-only HEAD~1 | grep -E '\.(proto|graphql|thrift)$'
+# If matches: run the project's code generation command detected in Step 0a.
+# Example: ./generate-grpc-code.sh
+# Verify generated files exist before proceeding.
 
-# 5. Push (with user approval)
+# 5. Clean up (bd worktree remove runs safety checks)
+bd worktree remove ".worktrees/<change-name>"
+rmdir ".worktrees" 2>/dev/null || true  # Remove empty parent dir if leftover
+
+# 6. Push (with user approval)
 git push
 ```
 
@@ -402,7 +422,56 @@ Present staged changes and suggest a commit message. The user decides when to co
 
 ### Ticket/change prefix for commits
 
-When JIRA is active, prefix with the ticket number: `PROJ-123: add-auth-middleware: implement OAuth flow`. When using a roadmap epic (no JIRA), prefix with the epic identifier. Otherwise, use the change name alone.
+When JIRA is active, prefix with the **JIRA story** (not the epic) that the bead belongs to: `PROJ-123: 1.1 add cache layer`. This enables per-story commit grouping for PR splitting. When using a roadmap epic (no JIRA), prefix with the epic identifier. Otherwise, use the change name alone.
+
+Structured commit message format:
+```
+<PROJ-123>: <task-number> <short description>
+
+Bead: <bead-id>
+OpenSpec: change:<change-name>/tasks.md: X.Y
+```
+
+The JIRA story ID on the first line enables `git log --grep="PROJ-123"` to extract all commits for a specific story. The `Bead:` trailer links back to the issue tracker.
+
+### PR submission (after pre-commit verification passes)
+
+When JIRA is active and the change spans multiple stories, offer the user a choice before pushing:
+
+> **PR submission options:**
+> 1. **Single PR** — one PR for the entire change (fast, simple review)
+> 2. **Per-ticket PRs** — split into separate PRs per JIRA story (granular review, traceable)
+>
+> Choose: single / per-ticket
+
+**If per-ticket:**
+```bash
+# 1. Identify unique JIRA stories from closed beads
+STORIES=$(bd list --status=closed --parent $EPIC_ID --json | \
+  jq -r '.[].external_ref' | grep '^jira:' | sort -u | sed 's/^jira://')
+
+# 2. For each story, create a branch with its commits
+PREV_BRANCH="main"
+for STORY in $STORIES; do
+  git checkout -b "pr/$STORY" "$PREV_BRANCH"
+  # Cherry-pick commits matching this story
+  git log "impl/<change-name>" --grep="$STORY" --format="%H" --reverse | \
+    xargs git cherry-pick
+  PREV_BRANCH="pr/$STORY"  # Stack dependent stories
+done
+
+# 3. Create PRs (with user approval for each)
+for STORY in $STORIES; do
+  gh pr create --base main --head "pr/$STORY" \
+    --title "$STORY: <story title>" \
+    --body "Part of <change-name>."
+done
+```
+
+**Notes:**
+- If stories have dependencies (Story B depends on Story A's changes), stack the branches: B's base is A's branch.
+- Spec/doc files (openspec/, .beads/) should be excluded from per-ticket PRs — they are process artifacts, not shippable code. Commit them separately or add `openspec/** linguist-generated=true` to `.gitattributes` so GitHub collapses them.
+- If cherry-pick conflicts arise, report to user and offer to resolve or fall back to a single PR.
 
 ### Post-session (both modes)
 
@@ -463,6 +532,10 @@ Next: <suggested action>
 - **Use `bd worktree create`, never `git worktree add`** — bd sets up the database redirect
 - **All work tracked in Beads** — claim before starting, close on completion, file gaps as beads
 - **Close beads individually** as tasks complete — no bulk-close without doing the work
+- **Sync tasks.md after every wave** — run sync script, verify output, catch missing OpenSpec refs early; do not defer to session end
+- **Never skip the spec-completion-auditor** — it catches what the sync script misses (multi-task beads, incomplete refs, manual gaps); it is NOT optional
+- **Post-merge: regenerate build artifacts** — generated code (gRPC, protobuf, codegen) is gitignored and will not survive a worktree merge; check and regenerate before pushing
+- **CLAUDE.md is not authoritative for plugin scripts** — if CLAUDE.md says a plugin script is a stub or disabled, verify against the actual script before skipping it
 
 ARGUMENTS: $ARGUMENTS
 - Follow `design.md` decisions — flag deviations, don't silently override

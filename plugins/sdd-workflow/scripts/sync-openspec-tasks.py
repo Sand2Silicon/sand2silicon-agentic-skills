@@ -37,6 +37,8 @@ OPENSPEC_CHANGES = WORKSPACE / "openspec" / "changes"
 
 # Scoped format: change:<name>/tasks.md: X.Y (preferred)
 SCOPED_REF_PATTERN = re.compile(r"change:([\w-]+)/tasks\.md:?\s*([\d]+\.[\d]+)(?!\d)")
+# Scoped range format: change:<name>/tasks.md: X.Y-X.Z (marks all tasks in same section)
+SCOPED_RANGE_PATTERN = re.compile(r"change:([\w-]+)/tasks\.md:?\s*([\d]+)\.([\d]+)-([\d]+)\.([\d]+)")
 # Legacy unscoped format: tasks.md: X.Y (ambiguous across changes)
 UNSCOPED_REF_PATTERN = re.compile(r"tasks\.md:?\s*([\d]+\.[\d]+)(?!\d)")
 # Matches [ ] and [~] tasks — both transition to [x] on bead closure
@@ -68,6 +70,15 @@ def collect_task_refs_by_change(issues: list[dict]) -> dict[str, set[str]]:
     refs: dict[str, set[str]] = {}
     for issue in issues:
         desc = issue.get("description", "")
+        # Scoped range refs (e.g., change:foo/tasks.md: 3.1-3.4) — expand to individual refs
+        for m in SCOPED_RANGE_PATTERN.finditer(desc):
+            change_name = m.group(1)
+            sec_start, task_start = int(m.group(2)), int(m.group(3))
+            sec_end, task_end = int(m.group(4)), int(m.group(5))
+            if sec_start == sec_end:
+                for t in range(task_start, task_end + 1):
+                    refs.setdefault(change_name, set()).add(f"{sec_start}.{t}")
+            # Cross-section ranges not supported — fall through to individual refs below
         for m in SCOPED_REF_PATTERN.finditer(desc):
             change_name = m.group(1)
             task_ref = m.group(2)

@@ -157,6 +157,7 @@ Design: S<decision> (if applicable)
 Agent: implementation-agent
 <Reference: org/repo#path/to/file.ext (if porting from external codebase)>" \
   --type=task --priority=1 \
+  --external-ref="<jira:PROJ-123 when JIRA active>" \
   --parent "$EPIC_FOUNDATION" 2>&1 | extract_id)
 echo "T11=$T11"
 
@@ -291,6 +292,19 @@ Every issue description MUST include:
 | `Design:` | `S<decision name>` | If task implements a specific design decision |
 | `Agent:` | `implementation-agent` / `test-writer-agent` / `review-agent` | Dispatch routing |
 | `Reference:` | `org/repo#path/to/file` (optional) | External code to port/adapt |
+
+**When a single bead covers multiple tasks** (e.g., tasks 3.1-3.4 grouped into one impl bead), list ALL task refs on separate lines. The sync script matches on individual `tasks.md: X.Y` patterns — a single ref only marks that one task:
+```
+OpenSpec: change:<change-name>/tasks.md: 3.1
+OpenSpec: change:<change-name>/tasks.md: 3.2
+OpenSpec: change:<change-name>/tasks.md: 3.3
+OpenSpec: change:<change-name>/tasks.md: 3.4
+```
+Omitting refs for 3.2-3.4 means those tasks silently stay `[ ]` after the bead closes.
+
+**When a task spans multiple beads** (task 1.1 requires both bead X and bead Y), each bead references the task with `OpenSpec:`. The sync script marks [x] on the first bead close. If the task isn't fully implemented yet (bead Y still open), the spec-completion-auditor catches it at pre-commit by verifying source code against acceptance criteria. No additional tracking is needed — the auditor is the source of truth.
+
+**When JIRA is active**, also set `--external-ref="jira:PROJ-123"` on every bead, using the JIRA story that the task belongs to. This enables per-story queries (`bd list --external-ref=jira:PROJ-123`) for PR splitting later.
 
 **Agent roles:**
 - **`implementation-agent`** — writes production code

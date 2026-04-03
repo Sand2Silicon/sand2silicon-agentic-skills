@@ -175,7 +175,40 @@ This should be a back-and-forth conversation:
 
 ---
 
-## Step 4: Report results
+## Step 4: Update CLAUDE.md with SDD workflow context
+
+The `/implement-beads` orchestrator reads `CLAUDE.md` in Step 0a to discover toolchain commands. Persisting detected commands there means they survive across sessions without re-detection — and avoids an orchestrator skipping plugin scripts it mistakenly believes are stubs based on stale project notes.
+
+Check whether `CLAUDE.md` exists at the project root:
+- If it does **not** exist: create it with only the section below.
+- If it exists: check for an existing `## SDD Workflow` section. Update it if present; append it if not.
+
+**Never overwrite or modify any existing CLAUDE.md content** outside the `## SDD Workflow` section.
+
+```markdown
+## SDD Workflow
+
+Managed by the `sdd-workflow` Claude Code plugin. Update by re-running `/sdd-workflow-init`.
+
+### Toolchain commands
+| Tool | Command |
+|------|---------|
+| Install deps | `<detected>` |
+| Run tests | `<detected>` |
+| Lint | `<detected or "not configured">` |
+| Type-check | `<detected or "not configured">` |
+| Code generation | `<detected — e.g., ./generate-grpc-code.sh — or "not configured">` |
+| Entry point | `<detected or "not configured">` |
+
+### Plugin notes
+- `sync-openspec-tasks.py` — syncs closed Beads to tasks.md after each wave and at pre-commit. **This script is functional.** Do not skip it based on any stale notes elsewhere in this file.
+- `/spec-completion-auditor` — mandatory after all beads close; catches ref mismatches the sync script cannot resolve.
+- Generated files (gRPC stubs, protobuf, codegen output) are typically gitignored. After a worktree merge, regenerate using the code generation command above before running tests.
+```
+
+---
+
+## Step 5: Report results
 
 Present a summary:
 
@@ -191,13 +224,15 @@ Present a summary:
 - **Domain:** <one-line summary>
 
 ### Created
-`.claude/sdd-workflow/spec-planning-template.md`
+- `.claude/sdd-workflow/spec-planning-template.md`
+- `CLAUDE.md` — `## SDD Workflow` section added or updated
 
 ### What to do next
 1. **Review the template** — edit domain context and constraints to add nuance
-2. **Start planning** —`/plan-spec <change-name>` uses this template automatically
-3. **Quick start from JIRA** —`/spec-from-tickets PROJ-123` for well-defined tickets
-4. **Manual planning** — copy the template for a specific change with the `new-plan.sh` script from this plugin's `scripts/` directory
+2. **Review CLAUDE.md** — verify detected toolchain commands are correct; edit if needed
+3. **Start planning** —`/plan-spec <change-name>` uses this template automatically
+4. **Quick start from JIRA** —`/spec-from-tickets PROJ-123` for well-defined tickets
+5. **Manual planning** — copy the template for a specific change with the `new-plan.sh` script from this plugin's `scripts/` directory
 ```
 
 ---
