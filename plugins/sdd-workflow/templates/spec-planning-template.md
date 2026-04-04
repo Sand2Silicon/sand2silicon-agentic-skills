@@ -1,10 +1,10 @@
 # Spec Planning Template
 
-A structured starting point for planning a new change with OpenSpec. Fill in the sections relevant to your work, then use this as the prompt for `/opsx:propose` (or `/opsx:explore` first for complex/ambiguous work).
+A structured starting point for planning a new change with OpenSpec. Fill in the sections relevant to your work, then use `/plan-spec` for stepwise artifact creation with review checkpoints, or invoke OpenSpec commands directly.
 
-> **Tip:** The `/plan-spec` skill automates context gathering and routes to the right OpenSpec command. Use this template directly when you prefer manual control or want to prepare offline.
+> **Tip:** The `/plan-spec` skill automates context gathering, creates artifacts stepwise with inline review after each, and runs two independent reviewer sub-agents (accuracy + completeness) before finishing. Use this template directly when you prefer manual control or want to prepare offline.
 >
-> **When to explore first:** If you have multiple unknowns, cross-cutting changes, or aren't sure about the approach, start with `/opsx:explore <change-name>` using this context. Explore drives a free-form interactive investigation, then transition to `/opsx:propose` when direction is clear.
+> **When to explore first:** If you have multiple unknowns, cross-cutting changes, or aren't sure about the approach, start with `/opsx:explore <change-name>` using this context. Explore drives a free-form interactive investigation, then transition to stepwise artifact creation when direction is clear.
 
 ---
 
@@ -80,3 +80,37 @@ This should be a back-and-forth conversation:
 **Quality requirements are non-negotiable defaults.** Every spec should include acceptance criteria and test tasks. Add domain-specific quality gates as needed (e.g., "must handle N requests/sec", "must pass security audit").
 
 **Source references drive automation.** When JIRA tickets are listed, `/plan-spec` can auto-fetch their acceptance criteria. When a roadmap epic is referenced, it can pull the phase context. The more you fill in, the more the tooling can do for you.
+
+---
+
+## Per-Artifact Review Checklists
+
+When using `/plan-spec` (recommended), these checklists are applied automatically after each artifact is created. When working manually or offline, use them to self-review before proceeding to the next artifact.
+
+### After proposal
+- [ ] Every capability maps to a roadmap deliverable or JIRA ticket
+- [ ] No scope creep — no capabilities beyond the target phase/epic
+- [ ] Terminology matches project conventions (CLAUDE.md, existing specs)
+- [ ] Approach is feasible given known constraints
+
+### After specs
+- [ ] Every type, method, enum cross-referenced against authoritative source docs
+- [ ] All names verified against the actual codebase (grep, don't assume)
+- [ ] Every scenario has specific inputs → specific expected outputs (Given/When/Then)
+- [ ] No requirements contradict each other or existing specs
+- [ ] Every JIRA acceptance criterion is reflected (when active)
+
+### After design
+- [ ] Every file path, build target, module name grep/glob-verified against codebase
+- [ ] Every external dependency is available and version-pinned
+- [ ] Build system changes verified against current configuration
+- [ ] Architecture follows established project patterns
+- [ ] Lifetime/ownership rules explicit where relevant (pimpl, RAII, threading)
+
+### After tasks
+- [ ] Every spec requirement has ≥1 task
+- [ ] Every task traces to ≥1 spec requirement
+- [ ] Task ordering respects build dependencies
+- [ ] Every task has specific, verifiable acceptance criteria
+- [ ] Critical implementation patterns explicit in descriptions
+- [ ] Every implementation task has a corresponding test task

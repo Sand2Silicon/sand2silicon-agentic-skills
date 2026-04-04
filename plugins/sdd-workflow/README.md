@@ -67,9 +67,9 @@ flowchart TD
     end
 
     subgraph PLN [" Planning Phase · every change "]
-        PS["/plan-spec<br/>Interactive planning conversation"]:::planning
+        PS["/plan-spec<br/>Stepwise artifact creation<br/>with per-artifact review"]:::planning
         SFT["/spec-from-tickets<br/>JIRA fast path"]:::planning
-        PROPOSE["/opsx:propose<br/>Generate OpenSpec artifacts"]:::planning
+        RSA["/review-spec-artifact<br/>Two-agent quality review"]:::planning
         OS["OpenSpec Artifacts<br/>proposal + design + specs + tasks"]:::artifact
     end
 
@@ -91,10 +91,10 @@ flowchart TD
     JIRA -->|"tickets"| SFT
     RM -->|"phases"| PS
     PTPL -->|"project context"| PS
-    PS --> PROPOSE
+    PS -->|"artifacts + review"| RSA
+    RSA --> OS
     SFT -->|"well-defined tickets"| OS
     SFT -->|"--direct"| GSB
-    PROPOSE --> OS
     OS --> GSB
     GSB -->|"wired bead graph"| IB
     IB -->|"all beads closed"| SCA
@@ -116,14 +116,15 @@ Run once per project. Scans the codebase — README, CLAUDE.md, dependency files
 
 ### Stage 1: Planning
 
-Two paths into planning, depending on how well-defined the work is:
+Three paths into planning, depending on how well-defined the work is:
 
 | Path | Skill | When to use |
 |------|-------|-------------|
-| **Interactive** | `/plan-spec <change-name> [PROJ-123 ...]` | Default. Drives a back-and-forth conversation: gathers context, fetches JIRA tickets, researches the codebase, aligns on design, then invokes `/opsx:propose`. |
+| **Interactive** | `/plan-spec <change-name> [PROJ-123 ...]` | Default. Gathers context, fetches JIRA tickets, researches the codebase, then creates OpenSpec artifacts **stepwise** with review checkpoints after each artifact, followed by a mandatory two-agent final review. |
 | **Fast path** | `/spec-from-tickets PROJ-123 PROJ-456` | JIRA tickets are well-defined with clear acceptance criteria. Assesses ticket quality, generates minimal OpenSpec artifacts (or `--direct` to beads). |
+| **Standalone review** | `/review-spec-artifact <change-name>` | After any artifact edit. Runs two independent reviewer sub-agents (accuracy + completeness) against existing artifacts. |
 
-Both paths produce **OpenSpec artifacts** (proposal, design, specs with acceptance scenarios, ordered tasks) that feed into bead generation.
+All paths produce **OpenSpec artifacts** (proposal, design, specs with acceptance scenarios, ordered tasks) that feed into bead generation.
 
 Initial input will come from one-or-more Jira tickets, a pre-planning roadmap document that describes phases/epics, or user-written description.
 
@@ -133,6 +134,7 @@ flowchart LR
     classDef planning fill:#6aa8f0,stroke:#4a8bd4,color:#fff
     classDef context fill:#b5e6e2,stroke:#5ecfc5,color:#1a1a2e
     classDef dialog fill:#7a54d9,stroke:#5e3dbf,color:#fff
+    classDef review fill:#efbdca,stroke:#d96585,color:#1a1a2e
     classDef success fill:#36bca0,stroke:#289478,color:#fff
 
     PS["/plan-spec"]:::planning -->|"asks"| Q1["What to build?<br/>(tickets, roadmap, description)"]:::planning
@@ -142,10 +144,14 @@ flowchart LR
     FETCH --> DIALOG["Back-and-forth<br/>conversation"]:::dialog
     READ --> DIALOG
     MANUAL --> DIALOG
-    DIALOG --> PROPOSE["/opsx:propose<br/>with populated context"]:::success
+    DIALOG --> STEPWISE["Stepwise artifact creation<br/>proposal → specs → design → tasks<br/>review checklist after each"]:::planning
+    STEPWISE --> REVIEW["Two-agent final review<br/>spec-accuracy-reviewer<br/>spec-completeness-reviewer"]:::review
+    REVIEW --> ARTIFACTS["Reviewed OpenSpec artifacts"]:::success
 ```
 
 **The back-and-forth conversation IS the product.** The interactive planning dialog catches misunderstandings that would otherwise become expensive bugs during implementation. `/plan-spec` structures this conversation, not replaces it. This is KEY to front-loading human-in-the-loop involvement, to remove interaction during the implementation phase.
+
+**Two-agent final review catches what conversations miss.** After artifacts are created, two independent reviewer sub-agents examine them through different lenses — one for factual accuracy (are names, APIs, targets real?), one for completeness and coherence (is anything missing, misaligned, or contradictory?). This catches the class of errors (wrong enum values, nonexistent CMake targets, missing task coverage) that conversational planning routinely misses.
 
 ### Stage 2: Bead Generation (`/generate-spec-beads`)
 
@@ -299,7 +305,8 @@ Produces a structured report with auto-synced tasks, gaps, and archive readiness
 | Skill | Invocation | When to use |
 |-------|-----------|-------------|
 | `sdd-workflow-init` | `/sdd-workflow-init` | Once per project; creates project-specific planning template |
-| `plan-spec` | `/plan-spec <change-name> [tickets...] [--epic N]` | Starting new work; interactive planning with context gathering |
+| `plan-spec` | `/plan-spec <change-name> [tickets...] [--epic N]` | Starting new work; stepwise artifact creation with review checkpoints |
+| `review-spec-artifact` | `/review-spec-artifact <change-name>` | After any artifact edit; runs two independent reviewer sub-agents |
 | `spec-from-tickets` | `/spec-from-tickets PROJ-123 [...]  [--direct]` | JIRA tickets are well-defined; fast path to specs or beads |
 | `generate-spec-beads` | `/generate-spec-beads <change-name>` | After planning; creates the bead dependency graph |
 | `implement-beads` | `/implement-beads <change-name or epic-id>` | After beads exist; drives parallel implementation |
