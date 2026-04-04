@@ -68,9 +68,9 @@ flowchart TD
 
     subgraph PLN [" Planning Phase · every change "]
         PS["/plan-spec<br/>Stepwise artifact creation<br/>with per-artifact review"]:::planning
-        SFT["/spec-from-tickets<br/>JIRA fast path"]:::planning
         RSA["/review-spec-artifact<br/>Two-agent quality review"]:::planning
         OS["OpenSpec Artifacts<br/>proposal + design + specs + tasks"]:::artifact
+        SFT["/spec-from-tickets<br/>JIRA fast path"]:::planning
     end
 
     subgraph EXE [" Execution Phase · every change "]
@@ -91,10 +91,10 @@ flowchart TD
     JIRA -->|"tickets"| SFT
     RM -->|"phases"| PS
     PTPL -->|"project context"| PS
-    PS -->|"artifacts + review"| RSA
-    RSA --> OS
     SFT -->|"well-defined tickets"| OS
     SFT -->|"--direct"| GSB
+    PS -->|"artifacts + review"| RSA
+    RSA --> OS
     OS --> GSB
     GSB -->|"wired bead graph"| IB
     IB -->|"all beads closed"| SCA
